@@ -134,8 +134,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* Main page container */}
-      <main className="relative z-10 mx-auto w-full max-w-4xl px-4 pt-5 pb-32 sm:px-6 sm:pt-7 sm:pb-36">
+      {/* Main page container (no z-index stacking context so page modals always layer above header/nav) */}
+      <main className="relative mx-auto w-full max-w-4xl px-4 pt-5 pb-32 sm:px-6 sm:pt-7 sm:pb-36">
         {children}
       </main>
 

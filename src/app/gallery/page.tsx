@@ -338,7 +338,7 @@ export default function GalleryPage() {
       {showBackModal && deckBackImage && (
         <div
           onClick={() => setShowBackModal(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6 backdrop-blur-md"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] backdrop-blur-md"
         >
           <div
             onClick={(e) => e.stopPropagation()}

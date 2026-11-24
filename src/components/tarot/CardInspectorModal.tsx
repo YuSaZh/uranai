@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Briefcase,
@@ -77,6 +78,12 @@ export function CardInspectorModal({
   }, [card, reversed, deckId]);
 
   // Escape key & body scroll lock
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!card || typeof window === "undefined") return;
 
@@ -125,7 +132,11 @@ export function CardInspectorModal({
     return localReversed ? targetCard.wealthReversed : targetCard.wealthUpright;
   };
 
-  return (
+  if (!mounted || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <AnimatePresence>
       {card ? (
         <motion.div
@@ -138,7 +149,7 @@ export function CardInspectorModal({
           role="dialog"
           aria-modal="true"
           aria-label={`${card.nameZh} 卡牌鉴赏与牌义解析`}
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#04060d]/82 p-0 backdrop-blur-xl sm:items-center sm:p-5"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-[#04060d]/88 p-0 backdrop-blur-xl sm:items-center sm:p-5"
         >
           <motion.div
             key={`card-inspector-sheet-${card.id}`}
@@ -147,7 +158,7 @@ export function CardInspectorModal({
             exit={{ opacity: 0, y: 20, scale: 0.97 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-[26px] border border-[#d4af37]/25 bg-[#0a0d18]/95 text-[#f3e7cb] shadow-[0_24px_80px_rgba(0,0,0,0.8)] sm:max-h-[90dvh] sm:rounded-[28px]"
+            className="relative flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[#0a0d18]/98 text-[#f3e7cb] shadow-[0_24px_80px_rgba(0,0,0,0.8)] sm:h-auto sm:max-h-[90dvh] sm:rounded-[28px] sm:border sm:border-[#d4af37]/25"
           >
             {/* Subtle ambient gold glow behind the inspector modal */}
             <div
@@ -158,8 +169,8 @@ export function CardInspectorModal({
               }}
             />
 
-            {/* Top Sanctuary Header Bar */}
-            <div className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0a0d18]/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-3.5">
+            {/* Top Sanctuary Header Bar (safe-area aware for iOS PWA Dynamic Island) */}
+            <div className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0a0d18]/90 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-md sm:px-6 sm:py-3.5">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#d4af37]/40 bg-[#d4af37]/12 text-[#f2d680]">
                   <Sparkles className="h-3.5 w-3.5" />
@@ -179,9 +190,10 @@ export function CardInspectorModal({
                 type="button"
                 onClick={onClose}
                 aria-label="关闭鉴赏弹窗"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-[#f3e7cb]/80 transition hover:border-[#d4af37]/50 hover:bg-[#d4af37]/15 hover:text-[#f7ebd2] active:scale-95"
+                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d4af37]/40 bg-[#d4af37]/15 px-3.5 text-xs font-medium text-[#f7ebd2] shadow-sm transition hover:border-[#d4af37]/70 hover:bg-[#d4af37]/25 active:scale-95"
               >
                 <X className="h-4 w-4" />
+                <span>关闭</span>
               </button>
             </div>
 
@@ -416,12 +428,13 @@ export function CardInspectorModal({
                 </div>
 
                 {/* Mobile Safe-Area Bottom Spacer */}
-                <div className="h-2 sm:hidden" />
+                <div className="h-[max(1.5rem,env(safe-area-inset-bottom))] sm:hidden" />
               </div>
             </div>
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
