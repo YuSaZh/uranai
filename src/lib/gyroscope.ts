@@ -5,29 +5,98 @@ import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent }
 
 type DeviceOrientationPermissionState = "granted" | "denied";
 
-interface DeviceOrientationEventWithPermission {
+interface SensorEventWithPermission {
   requestPermission?: () => Promise<DeviceOrientationPermissionState>;
 }
 
-export type GyroPermissionResult = "granted" | "denied" | "unsupported";
+export type GyroPermissionResult =
+  | "granted"
+  | "denied"
+  | "insecure"
+  | "unsupported";
 
+export interface GyroDiagnostics {
+  isSecureContext: boolean;
+  hasOrientationEvent: boolean;
+  needsExplicitPermission: boolean;
+}
+
+let sessionPermissionGranted = false;
+let sessionAutoPromptAttempted = false;
+
+export function getGyroDiagnostics(): GyroDiagnostics {
+  if (typeof window === "undefined") {
+    return {
+      isSecureContext: true,
+      hasOrientationEvent: false,
+      needsExplicitPermission: false,
+    };
+  }
+
+  const isSecure = Boolean(window.isSecureContext);
+  const hasEvent =
+    typeof window.DeviceOrientationEvent !== "undefined" ||
+    "ondeviceorientation" in window;
+  const ctor = (
+    window as unknown as {
+      DeviceOrientationEvent?: SensorEventWithPermission;
+    }
+  ).DeviceOrientationEvent;
+  const needsExplicit = typeof ctor?.requestPermission === "function";
+
+  return {
+    isSecureContext: isSecure,
+    hasOrientationEvent: hasEvent,
+    needsExplicitPermission: needsExplicit,
+  };
+}
+
+/**
+ * Must be invoked directly inside a user tap/click handler on iOS 13+ Safari/PWA
+ * (no `await` before calling `requestPermission()`).
+ */
 export async function requestGyroPermission(): Promise<GyroPermissionResult> {
-  if (typeof window === "undefined" || typeof DeviceOrientationEvent === "undefined") {
+  if (typeof window === "undefined") {
     return "unsupported";
   }
 
-  const ctor = DeviceOrientationEvent as unknown as DeviceOrientationEventWithPermission;
+  // iOS Safari & modern mobile browsers completely hide DeviceOrientationEvent on HTTP
+  if (!window.isSecureContext) {
+    return "insecure";
+  }
 
-  if (typeof ctor.requestPermission === "function") {
+  const win = window as unknown as {
+    DeviceOrientationEvent?: SensorEventWithPermission;
+    DeviceMotionEvent?: SensorEventWithPermission;
+  };
+
+  const orientationCtor = win.DeviceOrientationEvent;
+
+  if (!orientationCtor && !("ondeviceorientation" in window)) {
+    return "unsupported";
+  }
+
+  if (typeof orientationCtor?.requestPermission === "function") {
     try {
-      const state = await ctor.requestPermission();
-      return state === "granted" ? "granted" : "denied";
+      sessionAutoPromptAttempted = true;
+      const state = await orientationCtor.requestPermission();
+      if (state === "granted") {
+        sessionPermissionGranted = true;
+        // Best-effort companion motion permission on iOS if available
+        const motionCtor = win.DeviceMotionEvent;
+        if (typeof motionCtor?.requestPermission === "function") {
+          motionCtor.requestPermission().catch(() => {});
+        }
+        return "granted";
+      }
+      return "denied";
     } catch {
       return "denied";
     }
   }
 
-  // Non-iOS browsers exposing DeviceOrientationEvent do not require an explicit permission prompt
+  // Android Chrome / Firefox / non-iOS browsers on HTTPS grant orientation events without prompt
+  sessionPermissionGranted = true;
   return "granted";
 }
 
@@ -79,6 +148,7 @@ export function useCardTilt({
   const pointerActiveRef = useRef(false);
   const reducedMotionRef = useRef(false);
   const baselineBetaRef = useRef<number | null>(null);
+  const baselineGammaRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -158,21 +228,69 @@ export function useCardTilt({
   useEffect(() => {
     if (!enabled || !gyroEnabled || typeof window === "undefined") {
       baselineBetaRef.current = null;
+      baselineGammaRef.current = null;
       return;
+    }
+
+    // Re-request iOS session permission seamlessly on first tap if user already opted in
+    const diag = getGyroDiagnostics();
+    const onFirstTap = () => {
+      if (
+        diag.isSecureContext &&
+        diag.needsExplicitPermission &&
+        !sessionPermissionGranted &&
+        !sessionAutoPromptAttempted
+      ) {
+        requestGyroPermission().catch(() => {});
+      }
+    };
+
+    if (
+      diag.isSecureContext &&
+      diag.needsExplicitPermission &&
+      !sessionPermissionGranted &&
+      !sessionAutoPromptAttempted
+    ) {
+      window.addEventListener("touchend", onFirstTap, { once: true, passive: true });
     }
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
       if (pointerActiveRef.current || reducedMotionRef.current) return;
       if (event.gamma === null || event.beta === null) return;
 
-      if (baselineBetaRef.current === null) {
-        baselineBetaRef.current = clamp(event.beta, 15, 75);
+      const angle =
+        typeof window.screen?.orientation?.angle === "number"
+          ? window.screen.orientation.angle
+          : 0;
+
+      // Normalize axes for portrait vs landscape holding
+      let rawBeta = event.beta;
+      let rawGamma = event.gamma;
+      if (angle === 90) {
+        rawBeta = event.gamma;
+        rawGamma = -event.beta;
+      } else if (angle === 270 || angle === -90) {
+        rawBeta = -event.gamma;
+        rawGamma = event.beta;
       }
 
-      const relGamma = clamp(event.gamma / 28, -1, 1);
-      const relBeta = clamp((event.beta - baselineBetaRef.current) / 28, -1, 1);
+      if (baselineBetaRef.current === null) {
+        baselineBetaRef.current = clamp(rawBeta, 10, 80);
+      } else {
+        // Gentle auto-recenter so changing posture stays natural
+        baselineBetaRef.current += (clamp(rawBeta, 10, 80) - baselineBetaRef.current) * 0.008;
+      }
 
-      const gyroTiltScale = maxTilt * 0.85;
+      if (baselineGammaRef.current === null) {
+        baselineGammaRef.current = clamp(rawGamma, -25, 25);
+      } else {
+        baselineGammaRef.current += (clamp(rawGamma, -25, 25) - baselineGammaRef.current) * 0.008;
+      }
+
+      const relGamma = clamp((rawGamma - baselineGammaRef.current) / 24, -1, 1);
+      const relBeta = clamp((rawBeta - baselineBetaRef.current) / 24, -1, 1);
+
+      const gyroTiltScale = maxTilt * 0.9;
       targetRef.current = {
         tiltX: -relBeta * gyroTiltScale,
         tiltY: relGamma * gyroTiltScale,
@@ -185,6 +303,7 @@ export function useCardTilt({
     window.addEventListener("deviceorientation", handleOrientation, { passive: true });
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
+      window.removeEventListener("touchend", onFirstTap);
     };
   }, [enabled, gyroEnabled, maxTilt, startLoop]);
 

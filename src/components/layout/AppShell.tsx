@@ -58,8 +58,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Persistent full-bleed reading cloth stage */}
       <ClothStage theme={theme} />
 
-      {/* Top frosted luxury header */}
-      <header className="pt-safe sticky top-0 z-30 w-full px-3 sm:px-5">
+      {/* Top frosted luxury header with iOS status-bar safe-area scrim */}
+      <header
+        className="pt-safe sticky top-0 z-30 w-full px-3 pb-1.5 sm:px-5"
+        style={{
+          background:
+            "linear-gradient(to bottom, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 82%, transparent) 68%, transparent 100%)",
+        }}
+      >
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl px-3.5 uranai-glass sm:px-5">
           <Link
             href="/"

@@ -29,7 +29,11 @@ import { useUranai } from "@/context/UranaiProvider";
 import { THEMES } from "@/data/themes";
 import { DECKS, getCardImagePath } from "@/data/decks";
 import { soundEngine } from "@/lib/sound";
-import { requestGyroPermission, type GyroPermissionResult } from "@/lib/gyroscope";
+import {
+  getGyroDiagnostics,
+  requestGyroPermission,
+  type GyroPermissionResult,
+} from "@/lib/gyroscope";
 import type { AiConfig } from "@/types/tarot";
 
 const MODEL_PRESETS = [
@@ -146,6 +150,33 @@ export default function SettingsPage() {
 
   const [gyroStatus, setGyroStatus] = useState<GyroPermissionResult | null>(null);
   const [requestingGyro, setRequestingGyro] = useState(false);
+  const [liveGyroAngles, setLiveGyroAngles] = useState<{
+    beta: number;
+    gamma: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    const diag = getGyroDiagnostics();
+    if (!diag.isSecureContext) {
+      setGyroStatus("insecure");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!prefs.gyroEnabled || typeof window === "undefined" || !window.isSecureContext) {
+      setLiveGyroAngles(null);
+      return;
+    }
+    const onOrient = (event: DeviceOrientationEvent) => {
+      if (event.beta === null || event.gamma === null) return;
+      setLiveGyroAngles({
+        beta: Math.round(event.beta),
+        gamma: Math.round(event.gamma),
+      });
+    };
+    window.addEventListener("deviceorientation", onOrient, { passive: true });
+    return () => window.removeEventListener("deviceorientation", onOrient);
+  }, [prefs.gyroEnabled, gyroStatus]);
 
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -172,6 +203,17 @@ export default function SettingsPage() {
       }
     } finally {
       setRequestingGyro(false);
+    }
+  };
+
+  const handleToggleGyro = async (next: boolean) => {
+    updatePrefs({ gyroEnabled: next });
+    if (next) {
+      const result = await requestGyroPermission();
+      setGyroStatus(result);
+      if (result === "granted") {
+        soundEngine.playChime(prefs.soundEnabled);
+      }
     }
   };
 
@@ -513,35 +555,49 @@ export default function SettingsPage() {
             title="陀螺仪烫金追光"
             description="轻晃手机即可令 3D 塔罗牌随角度倾斜并折射细腻的金箔光泽。"
             checked={prefs.gyroEnabled}
-            onChange={(next) => updatePrefs({ gyroEnabled: next })}
+            onChange={(next) => {
+              void handleToggleGyro(next);
+            }}
             extra={
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRequestGyro}
-                  disabled={requestingGyro}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3 py-1 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
-                >
-                  {requestingGyro ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Compass className="h-3.5 w-3.5" />
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRequestGyro}
+                    disabled={requestingGyro}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3 py-1 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+                  >
+                    {requestingGyro ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Compass className="h-3.5 w-3.5" />
+                    )}
+                    授权手机陀螺仪
+                  </button>
+                  {liveGyroAngles && (
+                    <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] text-emerald-300">
+                      实时传感 β {liveGyroAngles.beta}° · γ {liveGyroAngles.gamma}°
+                    </span>
                   )}
-                  授权手机陀螺仪
-                </button>
+                </div>
                 {gyroStatus === "granted" && (
                   <span className="text-xs text-emerald-400">
-                    ✦ 已授权陀螺仪追光
+                    ✦ 已授权陀螺仪追光，轻晃手机即可在卡面看到动态反光
+                  </span>
+                )}
+                {gyroStatus === "insecure" && (
+                  <span className="text-xs leading-relaxed text-amber-300">
+                    当前通过 HTTP 打开，iOS 与现代浏览器仅允许 HTTPS 安全域名访问陀螺仪传感器；为站点配置 HTTPS 后即可开启，当前自动使用触控倾斜追光。
                   </span>
                 )}
                 {gyroStatus === "denied" && (
-                  <span className="text-xs text-amber-300">
-                    系统未授权方向传感器，请在 Safari/浏览器隐私设置中允许
+                  <span className="text-xs leading-relaxed text-amber-300">
+                    系统未授权方向传感器（若此前点过拒绝，请完全关闭后重新打开网页或在系统设置中重置网站权限）。
                   </span>
                 )}
                 {gyroStatus === "unsupported" && (
                   <span className="text-xs text-[var(--text-muted)]">
-                    当前设备无陀螺仪，已自动启用鼠标/触控倾斜追光
+                    当前浏览器未暴露方向传感器接口，已自动启用鼠标/触控倾斜追光
                   </span>
                 )}
               </div>
