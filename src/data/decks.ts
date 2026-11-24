@@ -71,3 +71,25 @@ export function getDeckBackImagePath(deckId: DeckId): string | null {
   }
   return null;
 }
+
+export function getCardThumbPath(
+  deckId: DeckId,
+  cardSlug: string,
+): string | null {
+  if (deckId === "rider-waite") {
+    return `/decks/rws/thumbs/${cardSlug}.webp`;
+  }
+  if (deckId === "mucha-hamster") {
+    return MUCHA_AVAILABLE_SLUGS.has(cardSlug)
+      ? `/decks/mucha-hamster/thumbs/${cardSlug}.webp`
+      : null;
+  }
+  return null;
+}
+
+export function getDeckBackThumbPath(deckId: DeckId): string | null {
+  if (deckId === "mucha-hamster" && MUCHA_HAS_CUSTOM_BACK) {
+    return "/decks/mucha-hamster/thumbs/card-back.webp";
+  }
+  return null;
+}

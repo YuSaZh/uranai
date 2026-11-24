@@ -13,6 +13,7 @@ import { TableReadingDrawer } from "@/components/table/TableReadingDrawer";
 import { getSpreadById } from "@/data/spreads";
 import type { TablePlacedCard, TableSpreadId } from "@/components/table/types";
 import type {
+  DeckPoolConfig,
   DrawnCard,
   ReadingCategoryId,
   ReadingRecord,
@@ -76,9 +77,11 @@ export default function VirtualTablePage() {
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
 
   const savedRecordIdRef = useRef<string | null>(null);
+  const placedCardsRef = useRef<TablePlacedCard[]>(placedCards);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   savedRecordIdRef.current = savedRecordId;
+  placedCardsRef.current = placedCards;
 
   // Screen Wake Lock API: keep iPad/tablet screen awake while lying flat on a table
   useEffect(() => {
@@ -317,7 +320,8 @@ export default function VirtualTablePage() {
   );
 
   const handleRevealAll = useCallback(() => {
-    const hasHidden = placedCards.some((card) => !card.revealed);
+    const current = placedCardsRef.current;
+    const hasHidden = current.some((card) => !card.revealed);
     if (!hasHidden) return;
 
     soundEngine.playCardFlip(prefs.soundEnabled);
@@ -329,7 +333,7 @@ export default function VirtualTablePage() {
       navigator.vibrate([12, 24, 14]);
     }
 
-    const next = placedCards.map((card) =>
+    const next = current.map((card) =>
       card.revealed ? card : { ...card, revealed: true }
     );
     setPlacedCards(next);
@@ -339,7 +343,7 @@ export default function VirtualTablePage() {
         cards: toDrawnCards(next),
       });
     }
-  }, [placedCards, prefs.hapticsEnabled, prefs.soundEnabled, updateReading]);
+  }, [prefs.hapticsEnabled, prefs.soundEnabled, updateReading]);
 
   const handleResetTable = useCallback(() => {
     soundEngine.playShuffle(prefs.soundEnabled);
@@ -363,6 +367,25 @@ export default function VirtualTablePage() {
 
   const handleCloseDrawer = useCallback(() => {
     setDrawerOpen(false);
+  }, []);
+
+  const handleOpenDeckPoolModal = useCallback(() => {
+    setDeckPoolOpen(true);
+  }, []);
+
+  const handleCloseDeckPoolModal = useCallback(() => {
+    setDeckPoolOpen(false);
+  }, []);
+
+  const handleApplyDeckPool = useCallback(
+    (nextPool: DeckPoolConfig) => {
+      updateDeckPool(nextPool);
+    },
+    [updateDeckPool]
+  );
+
+  const handleCloseInspector = useCallback(() => {
+    setInspectTarget(null);
   }, []);
 
   const handleExit = useCallback(() => {
@@ -394,7 +417,7 @@ export default function VirtualTablePage() {
         onOpenDrawer={handleOpenDrawer}
         onOpenClothSheet={handleOpenClothSheet}
         onOpenDeckSheet={handleOpenDeckSheet}
-        onOpenDeckPoolModal={() => setDeckPoolOpen(true)}
+        onOpenDeckPoolModal={handleOpenDeckPoolModal}
         onResetTable={handleResetTable}
         querentFacing={querentFacing}
         onToggleQuerentFacing={handleToggleQuerentFacing}
@@ -411,10 +434,8 @@ export default function VirtualTablePage() {
         minRequiredCards={activeSpreadMeta?.cardCount ?? 1}
         spreadLabel={activeSpreadMeta?.nameZh ?? "自由排布"}
         soundEnabled={prefs.soundEnabled}
-        onApply={(nextPool) => {
-          updateDeckPool(nextPool);
-        }}
-        onClose={() => setDeckPoolOpen(false)}
+        onApply={handleApplyDeckPool}
+        onClose={handleCloseDeckPoolModal}
       />
 
       <TableReadingDrawer
@@ -447,7 +468,7 @@ export default function VirtualTablePage() {
         gyroEnabled={prefs.gyroEnabled}
         soundEnabled={prefs.soundEnabled}
         onDeckChange={setDeckId}
-        onClose={() => setInspectTarget(null)}
+        onClose={handleCloseInspector}
       />
     </div>
   );

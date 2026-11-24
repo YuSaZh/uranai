@@ -557,18 +557,74 @@ function MuchaBackFallbackSvg() {
   );
 }
 
+const BROKEN_BACK_THUMBS = new Set<string>();
+
+function toBackThumbPath(imagePath: string): string {
+  const lastSlash = imagePath.lastIndexOf("/");
+  if (lastSlash === -1) return imagePath;
+  return `${imagePath.slice(0, lastSlash)}/thumbs/${imagePath.slice(lastSlash + 1)}`;
+}
+
 export const CardBackArtwork = memo(function CardBackArtwork({
   deckId,
   themeId,
   lightweight = false,
 }: CardBackArtworkProps) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const stateKey = `${deckId}:${lightweight ? 1 : 0}`;
+  // 0 = primary (thumb in lightweight mode, full otherwise), 1 = full-res fallback, 2 = SVG fallback
+  const [fallbackState, setFallbackState] = useState<{
+    key: string;
+    stage: 0 | 1 | 2;
+  }>({ key: stateKey, stage: 0 });
+
+  const stage = fallbackState.key === stateKey ? fallbackState.stage : 0;
   const backImagePath = getDeckBackImagePath(deckId);
   const theme = getThemeById(themeId ?? "celestial-velvet");
   const accentColor = theme.cssVars["--accent"] ?? "#d4af37";
 
+  if (lightweight) {
+    if (deckId === "mucha-hamster") {
+      if (!backImagePath || stage >= 2) {
+        return <MuchaBackFallbackSvg />;
+      }
+      const thumbPath = toBackThumbPath(backImagePath);
+      const useThumb = stage === 0 && !BROKEN_BACK_THUMBS.has(thumbPath);
+      const src = useThumb ? thumbPath : backImagePath;
+
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt="穆夏仓鼠塔罗牌背"
+          draggable={false}
+          decoding="async"
+          onError={() => {
+            if (useThumb) {
+              BROKEN_BACK_THUMBS.add(thumbPath);
+              setFallbackState({ key: stateKey, stage: 1 });
+            } else {
+              setFallbackState({ key: stateKey, stage: 2 });
+            }
+          }}
+          className="block h-full w-full select-none bg-[#0f2e34] object-cover"
+        />
+      );
+    }
+
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={getLightweightRwsBackUri(accentColor)}
+        alt="经典韦特塔罗牌背"
+        draggable={false}
+        decoding="async"
+        className="block h-full w-full select-none bg-[#0b0f21] object-cover"
+      />
+    );
+  }
+
   if (deckId === "mucha-hamster") {
-    if (backImagePath && !imgFailed) {
+    if (backImagePath && stage < 2) {
       return (
         <div className="relative h-full w-full overflow-hidden bg-[#0f2e34]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -577,7 +633,7 @@ export const CardBackArtwork = memo(function CardBackArtwork({
             alt="穆夏仓鼠塔罗牌背"
             draggable={false}
             decoding="async"
-            onError={() => setImgFailed(true)}
+            onError={() => setFallbackState({ key: stateKey, stage: 2 })}
             className="h-full w-full select-none object-cover"
           />
           <div
@@ -591,21 +647,6 @@ export const CardBackArtwork = memo(function CardBackArtwork({
       );
     }
     return <MuchaBackFallbackSvg />;
-  }
-
-  if (lightweight) {
-    return (
-      <div className="relative h-full w-full overflow-hidden bg-[#0b0f21]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={getLightweightRwsBackUri(accentColor)}
-          alt="经典韦特塔罗牌背"
-          draggable={false}
-          decoding="async"
-          className="h-full w-full select-none object-cover"
-        />
-      </div>
-    );
   }
 
   return <RiderWaiteBackSvg accentColor={accentColor} />;

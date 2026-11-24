@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, animate, motion, useMotionValue } from "framer-motion";
 import {
   ArrowLeft,
   BookOpen,
@@ -109,16 +109,33 @@ interface WashPointer {
   lastTime: number;
 }
 
-interface RibbonDragGhost {
+interface RibbonDragGhostMeta {
   cardId: string;
   ribbonIdx: number;
-  x: number;
-  y: number;
-  vx: number;
-  snapSlotIndex: number | null;
+}
+
+interface PlacedCardMotionControl {
+  el: HTMLDivElement | null;
+  stop: () => void;
+  jumpTo: (x: number, y: number, scale: number, rotate: number) => void;
+  springBack: () => void;
 }
 
 type DeckAnimState = "idle" | "riffle" | "cut";
+
+const PLACED_CARD_SPRING = {
+  type: "spring" as const,
+  stiffness: 280,
+  damping: 28,
+};
+
+function getSpreadUiStage(p: number): number {
+  if (p < 0.12) return 0;
+  if (p < 0.32) return 1;
+  if (p < 0.36) return 2;
+  if (p < 0.88) return 3;
+  return 4;
+}
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -220,7 +237,284 @@ function getCardPixelDims(
   }
 }
 
-export function VirtualTableCanvas({
+interface PlacedTableCardItemProps {
+  placed: TablePlacedCard;
+  tarotCard: TarotCard;
+  deckId: DeckId;
+  themeId: ThemeId;
+  isLightTheme: boolean;
+  accentColor: string;
+  accentStrong: string;
+  placedCardSize: "xs" | "sm" | "md" | "lg";
+  placedCardScale: number;
+  cardWidth: number;
+  cardHeight: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  querentFacing: boolean;
+  cleanMode: boolean;
+  gyroEnabled: boolean;
+  soundEnabled: boolean;
+  isSelected: boolean;
+  flipDelay: number;
+  slotIndexLabel?: number;
+  slotLabelZh?: string;
+  slotRotation?: number;
+  activeDraggingUidRef: React.MutableRefObject<string | null>;
+  registerControl: (uid: string, ctrl: PlacedCardMotionControl | null) => void;
+  onPointerDown: (uid: string, e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (uid: string, e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (uid: string, e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (uid: string) => void;
+  onKeyDown: (uid: string, e: React.KeyboardEvent<HTMLDivElement>) => void;
+}
+
+const PlacedTableCardItem = React.memo(function PlacedTableCardItem({
+  placed,
+  tarotCard,
+  deckId,
+  themeId,
+  isLightTheme,
+  accentColor,
+  accentStrong,
+  placedCardSize,
+  placedCardScale,
+  cardWidth,
+  cardHeight,
+  canvasWidth,
+  canvasHeight,
+  querentFacing,
+  cleanMode,
+  gyroEnabled,
+  soundEnabled,
+  isSelected,
+  flipDelay,
+  slotIndexLabel,
+  slotLabelZh,
+  slotRotation,
+  activeDraggingUidRef,
+  registerControl,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown,
+}: PlacedTableCardItemProps) {
+  const cardX = (placed.xPct / 100) * canvasWidth - cardWidth / 2;
+  const cardY = (placed.yPct / 100) * canvasHeight - cardHeight / 2;
+  const effectiveRotation = placed.rotation + (querentFacing ? 180 : 0);
+  const targetScale = isSelected ? placedCardScale * 1.03 : placedCardScale;
+
+  // Entrance deal-in starts slightly below target and scaled down, animated purely on GPU
+  const initialY = Math.min(
+    canvasHeight * 0.92 - cardHeight / 2,
+    cardY + canvasHeight * 0.12
+  );
+
+  const mvX = useMotionValue(cardX);
+  const mvY = useMotionValue(initialY);
+  const mvScale = useMotionValue(placedCardScale * 0.72);
+  const mvRotate = useMotionValue(effectiveRotation - 8);
+
+  const rootElRef = useRef<HTMLDivElement | null>(null);
+  const animsRef = useRef<Array<{ stop: () => void }>>([]);
+  const latestTargetsRef = useRef({
+    x: cardX,
+    y: cardY,
+    scale: targetScale,
+    rotate: effectiveRotation,
+  });
+  latestTargetsRef.current = {
+    x: cardX,
+    y: cardY,
+    scale: targetScale,
+    rotate: effectiveRotation,
+  };
+
+  const stopAnims = useCallback(() => {
+    for (const a of animsRef.current) {
+      a.stop();
+    }
+    animsRef.current = [];
+  }, []);
+
+  const springToTargets = useCallback(() => {
+    stopAnims();
+    const t = latestTargetsRef.current;
+    animsRef.current = [
+      animate(mvX, t.x, PLACED_CARD_SPRING),
+      animate(mvY, t.y, PLACED_CARD_SPRING),
+      animate(mvScale, t.scale, PLACED_CARD_SPRING),
+      animate(mvRotate, t.rotate, PLACED_CARD_SPRING),
+    ];
+  }, [mvRotate, mvScale, mvX, mvY, stopAnims]);
+
+  useEffect(() => {
+    const ctrl: PlacedCardMotionControl = {
+      get el() {
+        return rootElRef.current;
+      },
+      stop: stopAnims,
+      jumpTo: (x, y, scale, rotate) => {
+        stopAnims();
+        mvX.jump(x);
+        mvY.jump(y);
+        mvScale.jump(scale);
+        mvRotate.jump(rotate);
+      },
+      springBack: springToTargets,
+    };
+    registerControl(placed.uid, ctrl);
+    return () => {
+      stopAnims();
+      registerControl(placed.uid, null);
+    };
+  }, [
+    mvRotate,
+    mvScale,
+    mvX,
+    mvY,
+    placed.uid,
+    registerControl,
+    springToTargets,
+    stopAnims,
+  ]);
+
+  useEffect(() => {
+    if (activeDraggingUidRef.current === placed.uid) return;
+    springToTargets();
+  }, [
+    activeDraggingUidRef,
+    cardX,
+    cardY,
+    effectiveRotation,
+    placed.uid,
+    placed.zIndex,
+    springToTargets,
+    targetScale,
+  ]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => onPointerDown(placed.uid, e),
+    [onPointerDown, placed.uid]
+  );
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => onPointerMove(placed.uid, e),
+    [onPointerMove, placed.uid]
+  );
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => onPointerUp(placed.uid, e),
+    [onPointerUp, placed.uid]
+  );
+  const handlePointerCancel = useCallback(
+    () => onPointerCancel(placed.uid),
+    [onPointerCancel, placed.uid]
+  );
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => onKeyDown(placed.uid, e),
+    [onKeyDown, placed.uid]
+  );
+
+  const pillSurfaceClass = isLightTheme
+    ? "bg-[#fbf6ea]/92"
+    : "bg-[#0b0d18]/88";
+
+  return (
+    <motion.div
+      ref={rootElRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ scale: 0.68, opacity: 0, transition: { duration: 0.22 } }}
+      role="button"
+      tabIndex={0}
+      aria-label={
+        placed.revealed
+          ? `${tarotCard.nameZh} ${placed.reversed ? "逆位" : "正位"}`
+          : "点击翻开塔罗牌"
+      }
+      onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      className="absolute top-0 left-0 touch-none outline-none"
+      style={{
+        width: cardWidth,
+        height: cardHeight,
+        x: mvX,
+        y: mvY,
+        scale: mvScale,
+        rotate: mvRotate,
+        zIndex: placed.zIndex,
+        cursor: "grab",
+      }}
+    >
+      <div className="relative h-full w-full">
+        {/* Subtle slot pill above card (solid high-opacity surface, zero backdrop-blur) */}
+        {!cleanMode &&
+        slotLabelZh !== undefined &&
+        slotIndexLabel !== undefined &&
+        (slotRotation ?? 0) === 0 ? (
+          <span
+            className={`pointer-events-none absolute bottom-full left-1/2 mb-1.5 max-w-[130px] -translate-x-1/2 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wider ${pillSurfaceClass}`}
+            style={{
+              borderColor: `${accentColor}52`,
+              color: accentStrong,
+            }}
+          >
+            {slotIndexLabel + 1}. {slotLabelZh}
+          </span>
+        ) : null}
+
+        <TarotCard3D
+          card={tarotCard}
+          deckId={deckId}
+          themeId={themeId}
+          flipped={placed.revealed}
+          reversed={placed.reversed}
+          size={placedCardSize}
+          interactive
+          tiltEnabled
+          gyroEnabled={gyroEnabled}
+          soundEnabled={soundEnabled}
+          glowActive={isSelected}
+          maxTilt={14}
+          performanceMode="tabletop"
+          flipDelay={flipDelay}
+          className="touch-none"
+        />
+
+        {/* Compact card name pill once flipped (solid high-opacity surface, zero backdrop-blur) */}
+        {placed.revealed && !cleanMode && placedCardSize !== "xs" ? (
+          <div
+            className={`pointer-events-none absolute top-full left-1/2 mt-1.5 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] ${pillSurfaceClass}`}
+            style={{
+              borderColor: "var(--border-subtle)",
+              color: "var(--text-primary)",
+            }}
+          >
+            <span className="font-serif font-medium tracking-wide">
+              {tarotCard.nameZh}
+            </span>
+            <span
+              className={
+                placed.reversed
+                  ? isLightTheme
+                    ? "text-amber-800"
+                    : "text-amber-300"
+                  : "text-[var(--accent-strong)]"
+              }
+            >
+              · {placed.reversed ? "逆" : "正"}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </motion.div>
+  );
+});
+
+export const VirtualTableCanvas = React.memo(function VirtualTableCanvas({
   deckId,
   themeId,
   spreadId,
@@ -290,30 +584,64 @@ export function VirtualTableCanvas({
   const [deckOrder, setDeckOrder] = useState<string[]>(() => activePoolCardIds);
   const [washCardIds, setWashCardIds] = useState<string[]>(() => activePoolCardIds);
 
-  // Ribbon phase states
+  // Ribbon phase states (slimmed so live drag/sweep runs 0-rerender via DOM refs!)
   const [spreadProgress, setSpreadProgress] = useState<number>(0);
   const [ribbonDirection, setRibbonDirection] = useState<"ltr" | "rtl">("ltr");
   const [hoveredRibbonIdx, setHoveredRibbonIdx] = useState<number | null>(null);
-  const [ribbonGhost, setRibbonGhost] = useState<RibbonDragGhost | null>(null);
+  const [ribbonGhost, setRibbonGhost] = useState<RibbonDragGhostMeta | null>(null);
 
   // Placed card interaction states
   const [selectedCardUid, setSelectedCardUid] = useState<string | null>(null);
   const [floatReadingTab, setFloatReadingTab] = useState<
     "general" | "love" | "career" | "wealth" | "advice"
   >("general");
-  const [draggingCardUid, setDraggingCardUid] = useState<string | null>(null);
   const [dragHoverSlotIdx, setDragHoverSlotIdx] = useState<number | null>(null);
   const [isGatheringWash, setIsGatheringWash] = useState<boolean>(false);
+  const [flipDelays, setFlipDelays] = useState<Record<string, number>>({});
 
-  // Refs for physics, gestures, timers, and latest state
+  // Refs for physics, gestures, timers, and zero-rerender DOM transforms
   const maxZRef = useRef<number>(20);
   const movedByUserRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<number[]>([]);
   const ribbonAnimRafRef = useRef<number | null>(null);
-  const spreadProgressRef = useRef<number>(spreadProgress);
+  const spreadProgressRef = useRef<number>(0);
+  const ribbonDirectionRef = useRef<"ltr" | "rtl">("ltr");
+  const ribbonLiveDriveRef = useRef<boolean>(false);
+  const lastSpreadUiStageRef = useRef<number>(0);
   const lastRibbonTickBucketRef = useRef<number>(0);
+  const lastHapticMsRef = useRef<number>(0);
   const lastTapRef = useRef<{ uid: string; ts: number }>({ uid: "", ts: 0 });
   const prevPlacedLenRef = useRef<number>(placedCards.length);
+  const hasFlipDelaysRef = useRef<boolean>(false);
+
+  // Zero-rerender DOM element & live state refs
+  const placedCardsRef = useRef<TablePlacedCard[]>(placedCards);
+  const placedCardControlsRef = useRef<Map<string, PlacedCardMotionControl>>(
+    new Map()
+  );
+  const activeDraggingUidRef = useRef<string | null>(null);
+  const dragHoverSlotIdxRef = useRef<number | null>(null);
+  const selectedCardUidRef = useRef<string | null>(selectedCardUid);
+  const spreadMenuOpenRef = useRef<boolean>(spreadMenuOpen);
+  const querentFacingRef = useRef<boolean>(querentFacing);
+  const canvasSizeRef = useRef(canvasSize);
+  const ghostElRef = useRef<HTMLDivElement | null>(null);
+  const ghostPosRef = useRef<{ x: number; y: number; vx: number }>({
+    x: 0,
+    y: 0,
+    vx: 0,
+  });
+  const ribbonCardElsRef = useRef<Array<HTMLDivElement | null>>([]);
+  const hoveredRibbonIdxRef = useRef<number | null>(hoveredRibbonIdx);
+  const ribbonGhostCardIdRef = useRef<string | null>(ribbonGhost?.cardId ?? null);
+
+  placedCardsRef.current = placedCards;
+  selectedCardUidRef.current = selectedCardUid;
+  spreadMenuOpenRef.current = spreadMenuOpen;
+  querentFacingRef.current = querentFacing;
+  canvasSizeRef.current = canvasSize;
+  hoveredRibbonIdxRef.current = hoveredRibbonIdx;
+  ribbonGhostCardIdRef.current = ribbonGhost?.cardId ?? null;
 
   // Wash shuffle 60fps refs (no React re-renders per frame!)
   const washBodiesRef = useRef<WashCardBody[]>([]);
@@ -328,7 +656,23 @@ export function VirtualTableCanvas({
     Array<{ id: number; x: number; y: number }>
   >([]);
 
-  spreadProgressRef.current = spreadProgress;
+  const registerPlacedCardControl = useCallback(
+    (uid: string, ctrl: PlacedCardMotionControl | null) => {
+      if (ctrl) {
+        placedCardControlsRef.current.set(uid, ctrl);
+      } else {
+        placedCardControlsRef.current.delete(uid);
+      }
+    },
+    []
+  );
+
+  const clearFlipDelays = useCallback(() => {
+    if (hasFlipDelaysRef.current) {
+      hasFlipDelaysRef.current = false;
+      setFlipDelays({});
+    }
+  }, []);
 
   // Derived deck pools
   const usedCardIds = useMemo(
@@ -480,10 +824,32 @@ export function VirtualTableCanvas({
     [deckId, placedCardSize]
   );
 
-  // Haptics helper
+  // Refs synced with latest responsive card/ribbon sizing for zero-rerender DOM transforms
+  const placedCardDimsRef = useRef(placedCardDims);
+  const placedCardScaleRef = useRef(placedCardScale);
+  const ribbonCardsRef = useRef(ribbonCards);
+  const ribbonCardWidthRef = useRef(ribbonCardWidth);
+  const ribbonCardHeightRef = useRef(ribbonCardHeight);
+  placedCardDimsRef.current = placedCardDims;
+  placedCardScaleRef.current = placedCardScale;
+  ribbonCardsRef.current = ribbonCards;
+  ribbonCardWidthRef.current = ribbonCardWidth;
+  ribbonCardHeightRef.current = ribbonCardHeight;
+
+  useEffect(() => {
+    if (ribbonCardElsRef.current.length > ribbonCards.length) {
+      ribbonCardElsRef.current.length = ribbonCards.length;
+    }
+  }, [ribbonCards.length]);
+
+  // Haptics helper (throttled >= 65ms to prevent vibration motor chatter / main-thread spam)
   const triggerHaptic = useCallback(
     (pattern: number | number[]) => {
       if (!hapticsEnabled || typeof navigator === "undefined") return;
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastHapticMsRef.current < 65) return;
+      lastHapticMsRef.current = now;
       try {
         navigator.vibrate?.(pattern);
       } catch {
@@ -508,6 +874,7 @@ export function VirtualTableCanvas({
       window.cancelAnimationFrame(ribbonAnimRafRef.current);
       ribbonAnimRafRef.current = null;
     }
+    ribbonLiveDriveRef.current = false;
   }, []);
 
   // Client-mount cleanup
@@ -535,30 +902,51 @@ export function VirtualTableCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poolSignature]);
 
-  // Measure tabletop bounds continuously with ResizeObserver
+  // Measure tabletop bounds continuously with rAF-coalesced ResizeObserver
   useEffect(() => {
     const el = canvasRef.current;
     if (!el || typeof window === "undefined") return;
 
-    const updateBounds = () => {
+    let rafId: number | null = null;
+
+    const applyBounds = () => {
+      rafId = null;
       const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setCanvasSize({
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        });
+      const nextW = Math.round(rect.width);
+      const nextH = Math.round(rect.height);
+      if (nextW > 0 && nextH > 0) {
+        setCanvasSize((prev) =>
+          prev.width === nextW && prev.height === nextH
+            ? prev
+            : { width: nextW, height: nextH }
+        );
       }
     };
 
-    updateBounds();
+    const scheduleBoundsUpdate = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(applyBounds);
+    };
+
+    applyBounds();
 
     if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(updateBounds);
+      const ro = new ResizeObserver(scheduleBoundsUpdate);
       ro.observe(el);
-      return () => ro.disconnect();
+      return () => {
+        ro.disconnect();
+        if (rafId !== null) {
+          window.cancelAnimationFrame(rafId);
+        }
+      };
     }
-    window.addEventListener("resize", updateBounds, { passive: true });
-    return () => window.removeEventListener("resize", updateBounds);
+    window.addEventListener("resize", scheduleBoundsUpdate, { passive: true });
+    return () => {
+      window.removeEventListener("resize", scheduleBoundsUpdate);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   // Sync maxZRef with incoming placedCards & detect external reset
@@ -569,16 +957,25 @@ export function VirtualTableCanvas({
     }
 
     if (prevPlacedLenRef.current > 0 && placedCards.length === 0) {
+      stopRibbonAnim();
+      clearFlipDelays();
       setSelectedCardUid(null);
+      setRibbonGhost(null);
+      dragHoverSlotIdxRef.current = null;
+      setDragHoverSlotIdx(null);
       movedByUserRef.current.clear();
       const reshuffled = fisherYates(activePoolCardIds);
       setDeckOrder(reshuffled);
       setWashCardIds(reshuffled);
+      spreadProgressRef.current = 0;
+      ribbonDirectionRef.current = "ltr";
+      lastSpreadUiStageRef.current = 0;
+      setRibbonDirection("ltr");
       setSpreadProgress(0);
       setPhase("stack");
     }
     prevPlacedLenRef.current = placedCards.length;
-  }, [activePoolCardIds, placedCards]);
+  }, [activePoolCardIds, clearFlipDelays, placedCards, stopRibbonAnim]);
 
   // Compute ribbon geometry
   const ribbonGeom = useMemo(() => {
@@ -591,6 +988,9 @@ export function VirtualTableCanvas({
     const arcLift = clamp(canvasSize.height * 0.044, 16, 38);
     return { startX, endX, spanX, baseY, arcLift };
   }, [canvasSize.height, canvasSize.width, isCompactPhone, ribbonCardHeight, ribbonCardWidth]);
+
+  const ribbonGeomRef = useRef(ribbonGeom);
+  ribbonGeomRef.current = ribbonGeom;
 
   const getRibbonCardTransform = useCallback(
     (idx: number, total: number, progress: number, dir: "ltr" | "rtl") => {
@@ -606,19 +1006,70 @@ export function VirtualTableCanvas({
     [ribbonGeom]
   );
 
-  // Smoothly animate spreadProgress from current value to target
+  // Batch-write all 68-78 ribbon card transforms directly to DOM (0 React re-renders/frame)
+  const applyRibbonTransformsToDom = useCallback(
+    (progress: number, dir: "ltr" | "rtl", disableTransition: boolean) => {
+      const cardIds = ribbonCardsRef.current;
+      const total = cardIds.length;
+      if (total === 0) return;
+      const geom = ribbonGeomRef.current;
+      const halfW = ribbonCardWidthRef.current * 0.5;
+      const halfH = ribbonCardHeightRef.current * 0.5;
+      const els = ribbonCardElsRef.current;
+      const focusedIdx =
+        !disableTransition && progress > 0.35
+          ? hoveredRibbonIdxRef.current
+          : null;
+      const pullingCardId = ribbonGhostCardIdRef.current;
+      const transitionVal = disableTransition
+        ? "none"
+        : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease";
+
+      for (let i = 0; i < total; i++) {
+        const el = els[i];
+        if (!el) continue;
+        const t = total <= 1 ? 0.5 : i / (total - 1);
+        const u = dir === "ltr" ? t * progress : 1 - (1 - t) * progress;
+        const x = geom.startX + u * geom.spanX;
+        const arch = 4 * u * (1 - u);
+        const stackLift = (1 - progress) * -Math.min(i * 0.24, 18);
+        const y = geom.baseY - arch * geom.arcLift + stackLift;
+        const angle = (u - 0.5) * 26 * progress;
+        const isFocused = focusedIdx === i && cardIds[i] !== pullingCardId;
+
+        el.style.transition = transitionVal;
+        el.style.transform = `translate3d(${(x - halfW).toFixed(1)}px, ${(
+          y -
+          halfH -
+          (isFocused ? 26 : 0)
+        ).toFixed(1)}px, 0) rotate(${angle.toFixed(1)}deg)${
+          isFocused ? " scale(1.1)" : ""
+        }`;
+      }
+    },
+    []
+  );
+
+  // Smoothly animate spreadProgress via direct DOM writes (only sync React state at UI thresholds / end)
   const animateSpreadProgress = useCallback(
     (target: number, durationMs = 640, onDone?: () => void) => {
       stopRibbonAnim();
       const from = spreadProgressRef.current;
       const startTs = performance.now();
-      const totalCards = Math.max(1, ribbonCards.length);
+      const totalCards = Math.max(1, ribbonCardsRef.current.length);
+      ribbonLiveDriveRef.current = true;
+      if (hoveredRibbonIdxRef.current !== null) {
+        setHoveredRibbonIdx(null);
+      }
 
       const tick = (now: number) => {
         const rawT = clamp((now - startTs) / durationMs, 0, 1);
         const eased = 1 - Math.pow(1 - rawT, 3);
         const nextVal = from + (target - from) * eased;
-        setSpreadProgress(nextVal);
+        spreadProgressRef.current = nextVal;
+
+        const dir = ribbonDirectionRef.current;
+        applyRibbonTransformsToDom(nextVal, dir, true);
 
         const bucket = Math.floor(nextVal * totalCards);
         if (bucket !== lastRibbonTickBucketRef.current) {
@@ -628,16 +1079,27 @@ export function VirtualTableCanvas({
         }
 
         if (rawT < 1) {
+          const nextStage = getSpreadUiStage(nextVal);
+          if (nextStage !== lastSpreadUiStageRef.current) {
+            lastSpreadUiStageRef.current = nextStage;
+            setSpreadProgress(nextVal);
+          }
           ribbonAnimRafRef.current = window.requestAnimationFrame(tick);
         } else {
           ribbonAnimRafRef.current = null;
+          ribbonLiveDriveRef.current = false;
+          spreadProgressRef.current = target;
+          lastSpreadUiStageRef.current = getSpreadUiStage(target);
+          applyRibbonTransformsToDom(target, dir, false);
+          setRibbonDirection(dir);
+          setSpreadProgress(target);
           onDone?.();
         }
       };
 
       ribbonAnimRafRef.current = window.requestAnimationFrame(tick);
     },
-    [ribbonCards.length, soundEnabled, stopRibbonAnim, triggerHaptic]
+    [applyRibbonTransformsToDom, soundEnabled, stopRibbonAnim, triggerHaptic]
   );
 
   // Reposition untouched spread cards gracefully when toggling ribbon vs focus
@@ -679,6 +1141,8 @@ export function VirtualTableCanvas({
     triggerHaptic(10);
     setHoveredRibbonIdx(null);
     setRibbonGhost(null);
+    dragHoverSlotIdxRef.current = null;
+    setDragHoverSlotIdx(null);
     setPhase("focus");
     syncSpreadCardsForPhase("focus");
   }, [soundEnabled, stopRibbonAnim, syncSpreadCardsForPhase, triggerHaptic]);
@@ -686,18 +1150,20 @@ export function VirtualTableCanvas({
   const handleEnterRibbon = useCallback(
     (autoSpread = false) => {
       if (deckAnim !== "idle") return;
+      stopRibbonAnim();
       soundEngine.playCardDraw(soundEnabled);
       triggerHaptic(12);
       setSelectedCardUid(null);
+      ribbonDirectionRef.current = "ltr";
+      spreadProgressRef.current = 0;
+      lastSpreadUiStageRef.current = 0;
       setRibbonDirection("ltr");
       setHoveredRibbonIdx(null);
+      setSpreadProgress(0);
       setPhase("ribbon");
       syncSpreadCardsForPhase("ribbon");
       if (autoSpread) {
-        setSpreadProgress(0);
         scheduleTimer(() => animateSpreadProgress(1, 620), 60);
-      } else {
-        setSpreadProgress(0);
       }
     },
     [
@@ -705,6 +1171,7 @@ export function VirtualTableCanvas({
       deckAnim,
       scheduleTimer,
       soundEnabled,
+      stopRibbonAnim,
       syncSpreadCardsForPhase,
       triggerHaptic,
     ]
@@ -824,6 +1291,10 @@ export function VirtualTableCanvas({
     scheduleTimer(() => {
       washGatheringRef.current = false;
       setIsGatheringWash(false);
+      ribbonDirectionRef.current = "ltr";
+      spreadProgressRef.current = 0;
+      lastSpreadUiStageRef.current = 0;
+      ribbonLiveDriveRef.current = false;
       setRibbonDirection("ltr");
       setSpreadProgress(0);
       setPhase("ribbon");
@@ -1104,7 +1575,7 @@ export function VirtualTableCanvas({
     (xPct: number, yPct: number, thresholdPct = 11): number | null => {
       if (!activeSpread) return null;
       const compactForRibbon = phase !== "focus";
-      const occupied = new Set(placedCards.map((c) => c.slotIndex));
+      const occupied = new Set(placedCardsRef.current.map((c) => c.slotIndex));
       let bestIdx: number | null = null;
       let bestDist = thresholdPct;
 
@@ -1119,18 +1590,27 @@ export function VirtualTableCanvas({
       }
       return bestIdx;
     },
-    [activeSpread, phase, placedCards]
+    [activeSpread, phase]
   );
+
+  const formatGhostTransform = useCallback((x: number, y: number, vx: number) => {
+    const halfW = (placedCardDimsRef.current.w * placedCardScaleRef.current) / 2;
+    const halfH = (placedCardDimsRef.current.h * placedCardScaleRef.current) / 2;
+    return `translate3d(${(x - halfW).toFixed(1)}px, ${(y - halfH).toFixed(
+      1
+    )}px, 0) rotate(${(vx * 0.55).toFixed(1)}deg) scale(1.06)`;
+  }, []);
 
   const drawCardOntoTable = useCallback(
     (
       cardId: string,
       manualDrop?: { xPct: number; yPct: number; snapSlotIndex: number | null }
     ) => {
-      if (usedCardIds.has(cardId)) return;
+      const currentPlaced = placedCardsRef.current;
+      if (currentPlaced.some((c) => c.cardId === cardId)) return;
 
       const compactForRibbon = phase !== "focus";
-      let slotIndex = placedCards.length;
+      let slotIndex = currentPlaced.length;
       let xPct = 50;
       let yPct = 42;
       let rotation = 0;
@@ -1147,20 +1627,20 @@ export function VirtualTableCanvas({
         }
       } else if (manualDrop) {
         // Dropped freely anywhere on the cloth
-        const occupied = new Set(placedCards.map((c) => c.slotIndex));
+        const occupied = new Set(currentPlaced.map((c) => c.slotIndex));
         const nextUnusedPresetSlot = activeSpread?.slots.find(
           (s) => !occupied.has(s.index)
         );
         slotIndex = nextUnusedPresetSlot
           ? nextUnusedPresetSlot.index
-          : placedCards.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
+          : currentPlaced.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
         xPct = clamp(manualDrop.xPct, 9, 91);
         yPct = clamp(manualDrop.yPct, 14, compactForRibbon ? 72 : 84);
         rotation = (Math.random() - 0.5) * 4;
         userManuallyPlaced = true;
       } else if (activeSpread) {
         // Auto-place into next empty spread slot (or clarifier free spot if full)
-        const occupied = new Set(placedCards.map((c) => c.slotIndex));
+        const occupied = new Set(currentPlaced.map((c) => c.slotIndex));
         const nextSlot = activeSpread.slots.find((s) => !occupied.has(s.index));
         if (nextSlot) {
           const mapped = mapSlotToTable(nextSlot, compactForRibbon);
@@ -1170,9 +1650,9 @@ export function VirtualTableCanvas({
           rotation = mapped.rotation;
         } else {
           slotIndex =
-            placedCards.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
+            currentPlaced.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
           const freePos = computeFreeSlotPosition(
-            placedCards.length,
+            currentPlaced.length,
             compactForRibbon
           );
           xPct = freePos.xPct;
@@ -1183,9 +1663,9 @@ export function VirtualTableCanvas({
       } else {
         // Free mode tap draw
         slotIndex =
-          placedCards.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
+          currentPlaced.reduce((m, c) => Math.max(m, c.slotIndex), -1) + 1;
         const freePos = computeFreeSlotPosition(
-          placedCards.length,
+          currentPlaced.length,
           compactForRibbon
         );
         xPct = freePos.xPct;
@@ -1235,11 +1715,9 @@ export function VirtualTableCanvas({
       allowReversed,
       onPlacedCardsChange,
       phase,
-      placedCards,
       scheduleTimer,
       soundEnabled,
       triggerHaptic,
-      usedCardIds,
     ]
   );
 
@@ -1276,10 +1754,10 @@ export function VirtualTableCanvas({
 
   const findRibbonCardAtPoint = useCallback(
     (localX: number, localY: number, progress: number, dir: "ltr" | "rtl"): number | null => {
-      const total = ribbonCards.length;
+      const total = ribbonCardsRef.current.length;
       if (total === 0) return null;
-      const halfW = ribbonCardWidth * 0.56;
-      const halfH = ribbonCardHeight * 0.62;
+      const halfW = ribbonCardWidthRef.current * 0.56;
+      const halfH = ribbonCardHeightRef.current * 0.62;
 
       // Check top-most z-order card first
       for (let i = total - 1; i >= 0; i--) {
@@ -1293,7 +1771,7 @@ export function VirtualTableCanvas({
       }
 
       // Fallback nearest x if inside vertical ribbon corridor
-      if (localY >= ribbonGeom.baseY - ribbonCardHeight && progress > 0.25) {
+      if (localY >= ribbonGeomRef.current.baseY - ribbonCardHeightRef.current && progress > 0.25) {
         let closestIdx = 0;
         let closestDist = Infinity;
         for (let i = 0; i < total; i++) {
@@ -1304,22 +1782,16 @@ export function VirtualTableCanvas({
             closestIdx = i;
           }
         }
-        return closestDist < ribbonCardWidth * 1.1 ? closestIdx : null;
+        return closestDist < ribbonCardWidthRef.current * 1.1 ? closestIdx : null;
       }
       return null;
     },
-    [
-      getRibbonCardTransform,
-      ribbonCardHeight,
-      ribbonCardWidth,
-      ribbonCards.length,
-      ribbonGeom.baseY,
-    ]
+    [getRibbonCardTransform]
   );
 
   const handleRibbonPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (ribbonCards.length === 0) return;
+      if (ribbonCardsRef.current.length === 0) return;
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       stopRibbonAnim();
@@ -1328,7 +1800,8 @@ export function VirtualTableCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const currentProgress = spreadProgressRef.current;
-      const hitIdx = findRibbonCardAtPoint(x, y, currentProgress, ribbonDirection);
+      const currentDir = ribbonDirectionRef.current;
+      const hitIdx = findRibbonCardAtPoint(x, y, currentProgress, currentDir);
 
       ribbonGestureRef.current = {
         active: true,
@@ -1340,7 +1813,7 @@ export function VirtualTableCanvas({
         lastTime: performance.now(),
         velocityX: 0,
         initialProgress: currentProgress,
-        initialDir: ribbonDirection,
+        initialDir: currentDir,
         hitIdx,
         pullCardId: null,
       };
@@ -1350,13 +1823,7 @@ export function VirtualTableCanvas({
         soundEngine.playHoverTick(soundEnabled);
       }
     },
-    [
-      findRibbonCardAtPoint,
-      ribbonCards.length,
-      ribbonDirection,
-      soundEnabled,
-      stopRibbonAnim,
-    ]
+    [findRibbonCardAtPoint, soundEnabled, stopRibbonAnim]
   );
 
   const handleRibbonPointerMove = useCallback(
@@ -1375,9 +1842,9 @@ export function VirtualTableCanvas({
             x,
             y,
             spreadProgressRef.current,
-            ribbonDirection
+            ribbonDirectionRef.current
           );
-          if (hoverIdx !== hoveredRibbonIdx) {
+          if (hoverIdx !== hoveredRibbonIdxRef.current) {
             setHoveredRibbonIdx(hoverIdx);
             if (hoverIdx !== null) {
               soundEngine.playHoverTick(soundEnabled);
@@ -1403,11 +1870,13 @@ export function VirtualTableCanvas({
       // Classify undecided gesture once pointer travels > 10px
       if (g.mode === "undecided" && dist > 10) {
         if (dy < -14 && Math.abs(dy) >= Math.abs(dx) * 0.72 && g.hitIdx !== null) {
-          const pickedId = ribbonCards[g.hitIdx];
+          const pickedId = ribbonCardsRef.current[g.hitIdx];
           if (pickedId) {
             g.mode = "pull";
             g.pullCardId = pickedId;
+            ghostPosRef.current = { x, y, vx: clamp(g.velocityX, -22, 22) };
             setHoveredRibbonIdx(null);
+            setRibbonGhost({ cardId: pickedId, ribbonIdx: g.hitIdx });
             soundEngine.playHoverTick(soundEnabled);
             triggerHaptic(8);
           }
@@ -1418,11 +1887,11 @@ export function VirtualTableCanvas({
         }
       }
 
-      // Mode 1: Horizontal Silk Sweep (supports BOTH left→right AND right→left!)
+      // Mode 1: Horizontal Silk Sweep — 0 re-renders/frame via direct DOM writes!
       if (g.mode === "sweep") {
         let dir = g.initialDir;
         let nextProgress = g.initialProgress;
-        const effectiveSpan = Math.max(180, ribbonGeom.spanX * 0.76);
+        const effectiveSpan = Math.max(180, ribbonGeomRef.current.spanX * 0.76);
 
         if (g.initialProgress < 0.1) {
           if (dx < -10) {
@@ -1438,12 +1907,21 @@ export function VirtualTableCanvas({
           nextProgress = clamp(g.initialProgress - dx / effectiveSpan, 0, 1);
         }
 
-        if (dir !== ribbonDirection) {
-          setRibbonDirection(dir);
-        }
-        setSpreadProgress(nextProgress);
+        ribbonLiveDriveRef.current = true;
+        spreadProgressRef.current = nextProgress;
+        ribbonDirectionRef.current = dir;
+        applyRibbonTransformsToDom(nextProgress, dir, true);
 
-        const bucket = Math.floor(nextProgress * Math.max(1, ribbonCards.length));
+        const nextStage = getSpreadUiStage(nextProgress);
+        if (nextStage !== lastSpreadUiStageRef.current) {
+          lastSpreadUiStageRef.current = nextStage;
+          setRibbonDirection(dir);
+          setSpreadProgress(nextProgress);
+        }
+
+        const bucket = Math.floor(
+          nextProgress * Math.max(1, ribbonCardsRef.current.length)
+        );
         if (bucket !== lastRibbonTickBucketRef.current) {
           lastRibbonTickBucketRef.current = bucket;
           soundEngine.playHoverTick(soundEnabled);
@@ -1458,9 +1936,9 @@ export function VirtualTableCanvas({
           x,
           y,
           spreadProgressRef.current,
-          ribbonDirection
+          ribbonDirectionRef.current
         );
-        if (hoverIdx !== hoveredRibbonIdx) {
+        if (hoverIdx !== hoveredRibbonIdxRef.current) {
           setHoveredRibbonIdx(hoverIdx);
           if (hoverIdx !== null) {
             g.hitIdx = hoverIdx;
@@ -1470,12 +1948,17 @@ export function VirtualTableCanvas({
         }
 
         // Pull upward while gliding -> seamlessly grab the focused card off the ribbon!
-        if (y < ribbonGeom.baseY - ribbonCardHeight * 0.72 && g.hitIdx !== null) {
-          const pickedId = ribbonCards[g.hitIdx];
+        if (
+          y < ribbonGeomRef.current.baseY - ribbonCardHeightRef.current * 0.72 &&
+          g.hitIdx !== null
+        ) {
+          const pickedId = ribbonCardsRef.current[g.hitIdx];
           if (pickedId) {
             g.mode = "pull";
             g.pullCardId = pickedId;
+            ghostPosRef.current = { x, y, vx: clamp(g.velocityX, -22, 22) };
             setHoveredRibbonIdx(null);
+            setRibbonGhost({ cardId: pickedId, ribbonIdx: g.hitIdx });
             soundEngine.playHoverTick(soundEnabled);
             triggerHaptic(8);
           }
@@ -1483,33 +1966,35 @@ export function VirtualTableCanvas({
         return;
       }
 
-      // Mode 3: Dragging a pulled card across the velvet cloth
+      // Mode 3: Dragging a pulled ghost card across the velvet cloth — 0 re-renders/frame!
       if (g.mode === "pull" && g.pullCardId) {
-        const xPct = (x / canvasSize.width) * 100;
-        const yPct = (y / canvasSize.height) * 100;
+        const clampedVx = clamp(g.velocityX, -22, 22);
+        ghostPosRef.current.x = x;
+        ghostPosRef.current.y = y;
+        ghostPosRef.current.vx = clampedVx;
+
+        if (ghostElRef.current) {
+          ghostElRef.current.style.transform = formatGhostTransform(
+            x,
+            y,
+            clampedVx
+          );
+        }
+
+        const xPct = (x / Math.max(1, canvasSizeRef.current.width)) * 100;
+        const yPct = (y / Math.max(1, canvasSizeRef.current.height)) * 100;
         const snapSlotIndex = findNearestEmptySlot(xPct, yPct, 11);
-        setDragHoverSlotIdx(snapSlotIndex);
-        setRibbonGhost({
-          cardId: g.pullCardId,
-          ribbonIdx: g.hitIdx ?? 0,
-          x,
-          y,
-          vx: clamp(g.velocityX, -22, 22),
-          snapSlotIndex,
-        });
+        if (snapSlotIndex !== dragHoverSlotIdxRef.current) {
+          dragHoverSlotIdxRef.current = snapSlotIndex;
+          setDragHoverSlotIdx(snapSlotIndex);
+        }
       }
     },
     [
-      canvasSize.height,
-      canvasSize.width,
+      applyRibbonTransformsToDom,
       findNearestEmptySlot,
       findRibbonCardAtPoint,
-      hoveredRibbonIdx,
-      ribbonCardHeight,
-      ribbonCards,
-      ribbonDirection,
-      ribbonGeom.baseY,
-      ribbonGeom.spanX,
+      formatGhostTransform,
       soundEnabled,
       triggerHaptic,
     ]
@@ -1529,23 +2014,34 @@ export function VirtualTableCanvas({
 
       if (g.mode === "sweep") {
         const cur = spreadProgressRef.current;
+        const dir = ribbonDirectionRef.current;
         const speedMatch =
-          (ribbonDirection === "ltr" && g.velocityX > 8) ||
-          (ribbonDirection === "rtl" && g.velocityX < -8);
+          (dir === "ltr" && g.velocityX > 8) ||
+          (dir === "rtl" && g.velocityX < -8);
         if (cur > 0.52 || (cur > 0.2 && speedMatch)) {
           animateSpreadProgress(1, 420);
         } else if (cur < 0.16) {
           animateSpreadProgress(0, 260);
+        } else {
+          ribbonLiveDriveRef.current = false;
+          lastSpreadUiStageRef.current = getSpreadUiStage(cur);
+          applyRibbonTransformsToDom(cur, dir, false);
+          setRibbonDirection(dir);
+          setSpreadProgress(cur);
         }
         return;
       }
 
       if (g.mode === "pull" && g.pullCardId) {
-        const xPct = (x / canvasSize.width) * 100;
-        const yPct = (y / canvasSize.height) * 100;
-        const pulledHighEnough = y < ribbonGeom.baseY - ribbonCardHeight * 0.45;
+        const xPct = (x / Math.max(1, canvasSizeRef.current.width)) * 100;
+        const yPct = (y / Math.max(1, canvasSizeRef.current.height)) * 100;
+        const pulledHighEnough =
+          y < ribbonGeomRef.current.baseY - ribbonCardHeightRef.current * 0.45;
         setRibbonGhost(null);
-        setDragHoverSlotIdx(null);
+        if (dragHoverSlotIdxRef.current !== null) {
+          dragHoverSlotIdxRef.current = null;
+          setDragHoverSlotIdx(null);
+        }
 
         if (pulledHighEnough) {
           const snapSlot = findNearestEmptySlot(xPct, yPct, 12);
@@ -1563,7 +2059,7 @@ export function VirtualTableCanvas({
 
       // Quick tap on a ribbon card when ribbon is spread -> auto-draw onto table!
       if (moved <= 10 && spreadProgressRef.current > 0.35 && g.hitIdx !== null) {
-        const tappedCardId = ribbonCards[g.hitIdx];
+        const tappedCardId = ribbonCardsRef.current[g.hitIdx];
         if (tappedCardId) {
           setHoveredRibbonIdx(null);
           drawCardOntoTable(tappedCardId);
@@ -1575,20 +2071,15 @@ export function VirtualTableCanvas({
     },
     [
       animateSpreadProgress,
-      canvasSize.height,
-      canvasSize.width,
+      applyRibbonTransformsToDom,
       drawCardOntoTable,
       findNearestEmptySlot,
-      ribbonCardHeight,
-      ribbonCards,
-      ribbonDirection,
-      ribbonGeom.baseY,
       soundEnabled,
     ]
   );
 
   // =========================================================================
-  // Phase D & Persistent Tabletop: Placed Card Drag, Tap-Flip, Double-Tap, Actions
+  // Phase D & Persistent Tabletop: Zero-Rerender Placed Card Drag & Actions
   // =========================================================================
   const cardDragRef = useRef<{
     uid: string | null;
@@ -1597,7 +2088,16 @@ export function VirtualTableCanvas({
     startY: number;
     origXPct: number;
     origYPct: number;
+    origZIndex: number;
+    curXPct: number;
+    curYPct: number;
+    curPx: number;
+    curPy: number;
+    dragScale: number;
+    dragRotate: number;
+    elevatedZ: number;
     hasDragged: boolean;
+    el: HTMLDivElement | null;
   }>({
     uid: null,
     pointerId: null,
@@ -1605,18 +2105,36 @@ export function VirtualTableCanvas({
     startY: 0,
     origXPct: 0,
     origYPct: 0,
+    origZIndex: 20,
+    curXPct: 0,
+    curYPct: 0,
+    curPx: 0,
+    curPy: 0,
+    dragScale: 1,
+    dragRotate: 0,
+    elevatedZ: 20,
     hasDragged: false,
+    el: null,
   });
 
   const handlePlacedCardPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>, card: TablePlacedCard) => {
+    (uid: string, e: React.PointerEvent<HTMLDivElement>) => {
       e.stopPropagation();
       e.currentTarget.setPointerCapture(e.pointerId);
-      setSpreadMenuOpen(false);
+      if (spreadMenuOpenRef.current) {
+        setSpreadMenuOpen(false);
+      }
 
-      maxZRef.current += 1;
-      const elevatedZ = maxZRef.current;
+      const card = placedCardsRef.current.find((c) => c.uid === uid);
+      if (!card) return;
 
+      const dims = placedCardDimsRef.current;
+      const size = canvasSizeRef.current;
+      const startPx = (card.xPct / 100) * size.width - dims.w / 2;
+      const startPy = (card.yPct / 100) * size.height - dims.h / 2;
+      const effectiveRot = card.rotation + (querentFacingRef.current ? 180 : 0);
+
+      // Do NOT mutate zIndex / call onPlacedCardsChange on pointerdown — 0 renders on tap!
       cardDragRef.current = {
         uid: card.uid,
         pointerId: e.pointerId,
@@ -1624,111 +2142,189 @@ export function VirtualTableCanvas({
         startY: e.clientY,
         origXPct: card.xPct,
         origYPct: card.yPct,
+        origZIndex: card.zIndex,
+        curXPct: card.xPct,
+        curYPct: card.yPct,
+        curPx: startPx,
+        curPy: startPy,
+        dragScale: placedCardScaleRef.current * 1.06,
+        dragRotate: effectiveRot + 2,
+        elevatedZ: card.zIndex,
         hasDragged: false,
+        el: e.currentTarget,
       };
-
-      onPlacedCardsChange((prev) =>
-        prev.map((c) => (c.uid === card.uid ? { ...c, zIndex: elevatedZ } : c))
-      );
     },
-    [onPlacedCardsChange]
+    []
   );
 
   const handlePlacedCardPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>, card: TablePlacedCard) => {
+    (uid: string, e: React.PointerEvent<HTMLDivElement>) => {
       const drag = cardDragRef.current;
-      if (drag.uid !== card.uid || drag.pointerId !== e.pointerId) return;
+      if (drag.uid !== uid || drag.pointerId !== e.pointerId) return;
 
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
       const dist = Math.hypot(dx, dy);
 
+      let justStartedDrag = false;
       if (!drag.hasDragged && dist > 8) {
         drag.hasDragged = true;
-        setDraggingCardUid(card.uid);
-        setSelectedCardUid(null);
-        movedByUserRef.current.add(card.uid);
+        justStartedDrag = true;
+        activeDraggingUidRef.current = uid;
+        movedByUserRef.current.add(uid);
+        maxZRef.current += 1;
+        drag.elevatedZ = maxZRef.current;
+
+        const ctrl = placedCardControlsRef.current.get(uid);
+        ctrl?.stop();
+
+        if (drag.el) {
+          drag.el.style.zIndex = "900";
+          drag.el.style.cursor = "grabbing";
+        }
+        if (selectedCardUidRef.current !== null) {
+          setSelectedCardUid(null);
+        }
         triggerHaptic(6);
       }
 
       if (drag.hasDragged) {
+        const size = canvasSizeRef.current;
+        const dims = placedCardDimsRef.current;
         const nextX = clamp(
-          drag.origXPct + (dx / Math.max(1, canvasSize.width)) * 100,
+          drag.origXPct + (dx / Math.max(1, size.width)) * 100,
           6,
           94
         );
         const nextY = clamp(
-          drag.origYPct + (dy / Math.max(1, canvasSize.height)) * 100,
+          drag.origYPct + (dy / Math.max(1, size.height)) * 100,
           10,
           90
         );
+        const px = (nextX / 100) * size.width - dims.w / 2;
+        const py = (nextY / 100) * size.height - dims.h / 2;
+
+        drag.curXPct = nextX;
+        drag.curYPct = nextY;
+        drag.curPx = px;
+        drag.curPy = py;
+
+        // Keep Framer Motion MotionValues aligned on the initial drag frame (in case selection cleared)
+        if (justStartedDrag) {
+          placedCardControlsRef.current
+            .get(uid)
+            ?.jumpTo(px, py, drag.dragScale, drag.dragRotate);
+        }
+
+        // Direct GPU transform write — 0 React re-renders, 0 onPlacedCardsChange calls!
+        if (drag.el) {
+          drag.el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(
+            1
+          )}px, 0) scale(${drag.dragScale.toFixed(4)}) rotate(${drag.dragRotate.toFixed(
+            1
+          )}deg)`;
+        }
 
         const nearSlot = findNearestEmptySlot(nextX, nextY, 5.5);
-        setDragHoverSlotIdx(nearSlot);
-
-        onPlacedCardsChange((prev) =>
-          prev.map((c) =>
-            c.uid === card.uid ? { ...c, xPct: nextX, yPct: nextY } : c
-          )
-        );
+        if (nearSlot !== dragHoverSlotIdxRef.current) {
+          dragHoverSlotIdxRef.current = nearSlot;
+          setDragHoverSlotIdx(nearSlot);
+        }
       }
     },
-    [
-      canvasSize.height,
-      canvasSize.width,
-      findNearestEmptySlot,
-      onPlacedCardsChange,
-      triggerHaptic,
-    ]
+    [findNearestEmptySlot, triggerHaptic]
   );
 
   const handlePlacedCardPointerUp = useCallback(
-    (
-      e: React.PointerEvent<HTMLDivElement>,
-      placed: TablePlacedCard,
-      tarotCard: TarotCard
-    ) => {
+    (uid: string, e: React.PointerEvent<HTMLDivElement>) => {
       const drag = cardDragRef.current;
-      if (drag.uid !== placed.uid || drag.pointerId !== e.pointerId) return;
+      if (drag.uid !== uid || drag.pointerId !== e.pointerId) return;
+
       const wasDrag = drag.hasDragged;
+      const finalXPct = drag.curXPct;
+      const finalYPct = drag.curYPct;
+      const finalPx = drag.curPx;
+      const finalPy = drag.curPy;
+      const dragScale = drag.dragScale;
+      const dragRotate = drag.dragRotate;
+      const elevatedZ = drag.elevatedZ;
+      const el = drag.el;
+
       drag.uid = null;
       drag.pointerId = null;
       drag.hasDragged = false;
+      drag.el = null;
+      activeDraggingUidRef.current = null;
 
       if (wasDrag) {
-        setDraggingCardUid(null);
-        setDragHoverSlotIdx(null);
+        if (el) {
+          el.style.cursor = "grab";
+          el.style.zIndex = String(elevatedZ);
+        }
+
+        // Sync Framer MotionValues to exact drop coordinates before committing state
+        placedCardControlsRef.current
+          .get(uid)
+          ?.jumpTo(finalPx, finalPy, dragScale, dragRotate);
+
+        if (dragHoverSlotIdxRef.current !== null) {
+          dragHoverSlotIdxRef.current = null;
+          setDragHoverSlotIdx(null);
+        }
 
         // Soft snap only if released very close to an empty spread slot
-        const snapSlot = findNearestEmptySlot(placed.xPct, placed.yPct, 5);
-        if (snapSlot !== null && activeSpread) {
-          const slotDef = activeSpread.slots[snapSlot];
-          if (slotDef) {
-            const mapped = mapSlotToTable(slotDef, phase !== "focus");
-            movedByUserRef.current.delete(placed.uid);
-            onPlacedCardsChange((prev) =>
-              prev.map((c) =>
-                c.uid === placed.uid
-                  ? {
-                      ...c,
-                      slotIndex: slotDef.index,
-                      xPct: mapped.xPct,
-                      yPct: mapped.yPct,
-                      rotation: mapped.rotation,
-                    }
-                  : c
-              )
-            );
-          }
+        const snapSlot = findNearestEmptySlot(finalXPct, finalYPct, 5);
+        const slotDef =
+          snapSlot !== null && activeSpread ? activeSpread.slots[snapSlot] : null;
+
+        if (slotDef) {
+          const mapped = mapSlotToTable(slotDef, phase !== "focus");
+          movedByUserRef.current.delete(uid);
+          // Single batched state commit on pointerup with snapped slot + elevated zIndex
+          onPlacedCardsChange((prev) =>
+            prev.map((c) =>
+              c.uid === uid
+                ? {
+                    ...c,
+                    slotIndex: slotDef.index,
+                    xPct: mapped.xPct,
+                    yPct: mapped.yPct,
+                    rotation: mapped.rotation,
+                    zIndex: elevatedZ,
+                  }
+                : c
+            )
+          );
+        } else {
+          // Single batched state commit on pointerup with final free position + elevated zIndex
+          onPlacedCardsChange((prev) =>
+            prev.map((c) =>
+              c.uid === uid
+                ? {
+                    ...c,
+                    xPct: finalXPct,
+                    yPct: finalYPct,
+                    zIndex: elevatedZ,
+                  }
+                : c
+            )
+          );
         }
+
         soundEngine.playHoverTick(soundEnabled);
         triggerHaptic(8);
         return;
       }
 
       // Tap interaction (<= 8px)
+      const placed = placedCardsRef.current.find((c) => c.uid === uid);
+      if (!placed) return;
+      const tarotCard = getCardById(placed.cardId);
+      if (!tarotCard) return;
+
       if (!placed.revealed) {
         // Flip face-down card right on the cloth and immediately focus it for bottom-right reading popup
+        clearFlipDelays();
         triggerHaptic(16);
         setSelectedCardUid(placed.uid);
         setFloatReadingTab("general");
@@ -1756,6 +2352,7 @@ export function VirtualTableCanvas({
     },
     [
       activeSpread,
+      clearFlipDelays,
       findNearestEmptySlot,
       onInspectCard,
       onPlacedCardsChange,
@@ -1765,9 +2362,61 @@ export function VirtualTableCanvas({
     ]
   );
 
-  // Cascading Reveal All
+  const handlePlacedCardPointerCancel = useCallback((uid: string) => {
+    const drag = cardDragRef.current;
+    if (drag.uid !== uid) return;
+
+    const wasDrag = drag.hasDragged;
+    const origZ = drag.origZIndex;
+    const curPx = drag.curPx;
+    const curPy = drag.curPy;
+    const dragScale = drag.dragScale;
+    const dragRotate = drag.dragRotate;
+    const el = drag.el;
+
+    drag.uid = null;
+    drag.pointerId = null;
+    drag.hasDragged = false;
+    drag.el = null;
+    activeDraggingUidRef.current = null;
+
+    if (wasDrag) {
+      if (el) {
+        el.style.zIndex = String(origZ);
+        el.style.cursor = "grab";
+      }
+      const ctrl = placedCardControlsRef.current.get(uid);
+      ctrl?.jumpTo(curPx, curPy, dragScale, dragRotate);
+      ctrl?.springBack();
+    }
+
+    if (dragHoverSlotIdxRef.current !== null) {
+      dragHoverSlotIdxRef.current = null;
+      setDragHoverSlotIdx(null);
+    }
+  }, []);
+
+  const handlePlacedCardKeyDown = useCallback(
+    (uid: string, e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      const placed = placedCardsRef.current.find((c) => c.uid === uid);
+      if (!placed) return;
+      if (!placed.revealed) {
+        clearFlipDelays();
+        onPlacedCardsChange((prev) =>
+          prev.map((c) => (c.uid === uid ? { ...c, revealed: true } : c))
+        );
+      } else {
+        setSelectedCardUid((cur) => (cur === uid ? null : uid));
+      }
+    },
+    [clearFlipDelays, onPlacedCardsChange]
+  );
+
+  // Single-Batch Cascading Reveal All (1 React commit instead of N sequential commits!)
   const handleRevealAll = useCallback(() => {
-    const unrevealedUids = placedCards
+    const unrevealedUids = placedCardsRef.current
       .filter((c) => !c.revealed)
       .sort((a, b) => a.slotIndex - b.slotIndex)
       .map((c) => c.uid);
@@ -1775,32 +2424,37 @@ export function VirtualTableCanvas({
     if (unrevealedUids.length === 0) return;
     setSelectedCardUid(null);
 
-    unrevealedUids.forEach((uid, order) => {
-      scheduleTimer(() => {
-        triggerHaptic(11);
-        onPlacedCardsChange((prev) =>
-          prev.map((c) => (c.uid === uid ? { ...c, revealed: true } : c))
-        );
-        if (order === unrevealedUids.length - 1) {
-          scheduleTimer(() => {
-            soundEngine.playChime(soundEnabled);
-            setSelectedCardUid(unrevealedUids[0] ?? null);
-            setFloatReadingTab("general");
-          }, 360);
-        }
-      }, order * 155);
+    const nextDelays: Record<string, number> = {};
+    unrevealedUids.forEach((uid, idx) => {
+      nextDelays[uid] = Number((idx * 0.11).toFixed(2));
     });
-  }, [
-    onPlacedCardsChange,
-    placedCards,
-    scheduleTimer,
-    soundEnabled,
-    triggerHaptic,
-  ]);
+    hasFlipDelaysRef.current = true;
+    setFlipDelays(nextDelays);
+
+    const revealSet = new Set(unrevealedUids);
+    onPlacedCardsChange((prev) =>
+      prev.map((c) => (revealSet.has(c.uid) ? { ...c, revealed: true } : c))
+    );
+
+    // Lightweight staggered sound & haptic schedule matching the 0.11s flip cascade
+    unrevealedUids.forEach((_, idx) => {
+      scheduleTimer(() => {
+        soundEngine.playCardFlip(soundEnabled);
+        triggerHaptic(10);
+      }, idx * 115);
+    });
+
+    const chimeDelayMs = (unrevealedUids.length - 1) * 110 + 480;
+    scheduleTimer(() => {
+      soundEngine.playChime(soundEnabled);
+      setSelectedCardUid(unrevealedUids[0] ?? null);
+      setFloatReadingTab("general");
+    }, chimeDelayMs);
+  }, [onPlacedCardsChange, scheduleTimer, soundEnabled, triggerHaptic]);
 
   // Tidy / re-align cards into spread slots
   const handleAlignSpread = useCallback(() => {
-    if (!activeSpread || placedCards.length === 0) return;
+    if (!activeSpread || placedCardsRef.current.length === 0) return;
     const compactForRibbon = phase !== "focus";
     movedByUserRef.current.clear();
     soundEngine.playCardDraw(soundEnabled);
@@ -1820,7 +2474,7 @@ export function VirtualTableCanvas({
         };
       })
     );
-  }, [activeSpread, onPlacedCardsChange, phase, placedCards.length, soundEnabled, triggerHaptic]);
+  }, [activeSpread, onPlacedCardsChange, phase, soundEnabled, triggerHaptic]);
 
   // Card mini-action handlers
   const handleToggleCardReversed = useCallback(
@@ -1836,13 +2490,14 @@ export function VirtualTableCanvas({
 
   const handleFlipCardBackDown = useCallback(
     (uid: string) => {
+      clearFlipDelays();
       triggerHaptic(10);
       setSelectedCardUid(null);
       onPlacedCardsChange((prev) =>
         prev.map((c) => (c.uid === uid ? { ...c, revealed: false } : c))
       );
     },
-    [onPlacedCardsChange, triggerHaptic]
+    [clearFlipDelays, onPlacedCardsChange, triggerHaptic]
   );
 
   const handleRemoveCard = useCallback(
@@ -1864,7 +2519,7 @@ export function VirtualTableCanvas({
       onSpreadChange(nextSpread);
 
       // Gently re-align existing cards if user picks a preset spread and cards exist
-      if (nextSpread !== "free" && placedCards.length > 0) {
+      if (nextSpread !== "free" && placedCardsRef.current.length > 0) {
         const def = getSpreadById(nextSpread);
         const compactForRibbon = phase !== "focus";
         movedByUserRef.current.clear();
@@ -1884,21 +2539,38 @@ export function VirtualTableCanvas({
         );
       }
     },
-    [onPlacedCardsChange, onSpreadChange, phase, placedCards.length, soundEnabled, triggerHaptic]
+    [onPlacedCardsChange, onSpreadChange, phase, soundEnabled, triggerHaptic]
   );
 
   const handleResetAll = useCallback(() => {
     stopRibbonAnim();
+    clearFlipDelays();
     soundEngine.playShuffle(soundEnabled);
     triggerHaptic(14);
     setSelectedCardUid(null);
     setSpreadMenuOpen(false);
+    setRibbonGhost(null);
+    dragHoverSlotIdxRef.current = null;
+    setDragHoverSlotIdx(null);
     movedByUserRef.current.clear();
-    setDeckOrder(fisherYates(TAROT_CARDS.map((c) => c.id)));
+    const reshuffled = fisherYates(activePoolCardIds);
+    setDeckOrder(reshuffled);
+    setWashCardIds(reshuffled);
+    spreadProgressRef.current = 0;
+    ribbonDirectionRef.current = "ltr";
+    lastSpreadUiStageRef.current = 0;
+    setRibbonDirection("ltr");
     setSpreadProgress(0);
     setPhase("stack");
     onResetTable();
-  }, [onResetTable, soundEnabled, stopRibbonAnim, triggerHaptic]);
+  }, [
+    activePoolCardIds,
+    clearFlipDelays,
+    onResetTable,
+    soundEnabled,
+    stopRibbonAnim,
+    triggerHaptic,
+  ]);
 
   // Preset spread slots mapped to tabletop coordinates
   const mappedSlots = useMemo(() => {
@@ -2011,7 +2683,7 @@ export function VirtualTableCanvas({
          ===================================================================== */}
 
       {/* =====================================================================
-          LAYER 1 (z-10): Etched Golden Spread Slot Outlines on Cloth
+          LAYER 1 (z-10): Etched Golden Spread Slot Outlines on Cloth (Pure GPU x/y)
          ===================================================================== */}
       {activeSpread && phase !== "wash" ? (
         <div
@@ -2022,20 +2694,22 @@ export function VirtualTableCanvas({
             const isDropHighlight = dragHoverSlotIdx === slot.index;
             const slotW = Math.round(placedCardDims.w * placedCardScale);
             const slotH = Math.round(placedCardDims.h * placedCardScale);
+            const slotX = (xPct / 100) * canvasSize.width - slotW / 2;
+            const slotY = (yPct / 100) * canvasSize.height - slotH / 2;
 
             return (
               <motion.div
                 key={`slot-${activeSpread.id}-${slot.index}`}
                 initial={false}
                 animate={{
-                  left: `${xPct}%`,
-                  top: `${yPct}%`,
+                  x: slotX,
+                  y: slotY,
                   rotate: rotation + (querentFacing ? 180 : 0),
                   scale: isDropHighlight ? 1.07 : 1,
                   opacity: occupied ? 0.24 : isDropHighlight ? 1 : isNext ? 0.92 : 0.56,
                 }}
                 transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-[11px]"
+                className="absolute top-0 left-0 rounded-[11px]"
                 style={{
                   width: slotW,
                   height: slotH,
@@ -2093,143 +2767,41 @@ export function VirtualTableCanvas({
             const tarotCard = getCardById(placed.cardId);
             if (!tarotCard) return null;
 
-            const isDragging = draggingCardUid === placed.uid;
-            const isSelected = selectedCardUid === placed.uid;
             const slotDef = activeSpread?.slots[placed.slotIndex];
-            const effectiveRotation =
-              placed.rotation + (querentFacing ? 180 : 0);
 
             return (
-              <motion.div
+              <PlacedTableCardItem
                 key={placed.uid}
-                initial={{
-                  left: `${placed.xPct}%`,
-                  top: `${Math.min(92, placed.yPct + 12)}%`,
-                  scale: placedCardScale * 0.72,
-                  opacity: 0,
-                  rotate: effectiveRotation - 8,
-                }}
-                animate={{
-                  left: `${placed.xPct}%`,
-                  top: `${placed.yPct}%`,
-                  scale: isDragging
-                    ? placedCardScale * 1.07
-                    : isSelected
-                      ? placedCardScale * 1.03
-                      : placedCardScale,
-                  opacity: 1,
-                  rotate: isDragging ? effectiveRotation + 2 : effectiveRotation,
-                }}
-                exit={{ scale: 0.68, opacity: 0, transition: { duration: 0.22 } }}
-                transition={
-                  isDragging
-                    ? { duration: 0 }
-                    : { type: "spring", stiffness: 280, damping: 28 }
-                }
-                role="button"
-                tabIndex={0}
-                aria-label={
-                  placed.revealed
-                    ? `${tarotCard.nameZh} ${placed.reversed ? "逆位" : "正位"}`
-                    : "点击翻开塔罗牌"
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    if (!placed.revealed) {
-                      onPlacedCardsChange((prev) =>
-                        prev.map((c) =>
-                          c.uid === placed.uid ? { ...c, revealed: true } : c
-                        )
-                      );
-                    } else {
-                      setSelectedCardUid((cur) =>
-                        cur === placed.uid ? null : placed.uid
-                      );
-                    }
-                  }
-                }}
-                onPointerDown={(e) => handlePlacedCardPointerDown(e, placed)}
-                onPointerMove={(e) => handlePlacedCardPointerMove(e, placed)}
-                onPointerUp={(e) =>
-                  handlePlacedCardPointerUp(e, placed, tarotCard)
-                }
-                onPointerCancel={() => {
-                  if (cardDragRef.current.uid === placed.uid) {
-                    cardDragRef.current.uid = null;
-                    cardDragRef.current.pointerId = null;
-                    setDraggingCardUid(null);
-                    setDragHoverSlotIdx(null);
-                  }
-                }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 touch-none outline-none"
-                style={{
-                  zIndex: isDragging ? 900 : placed.zIndex,
-                  cursor: isDragging ? "grabbing" : "grab",
-                  filter: isDragging
-                    ? "drop-shadow(0 24px 36px rgba(0,0,0,0.62))"
-                    : undefined,
-                }}
-              >
-                <div className="relative flex flex-col items-center">
-                  {/* Subtle slot pill above card (only when not cleanMode and not crossing 90deg overlap) */}
-                  {!cleanMode && slotDef && (slotDef.rotation ?? 0) === 0 ? (
-                    <span
-                      className="pointer-events-none mb-1.5 max-w-[130px] truncate rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wider backdrop-blur-md"
-                      style={{
-                        borderColor: `${accentColor}52`,
-                        backgroundColor: "var(--bg-glass)",
-                        color: accentStrong,
-                      }}
-                    >
-                      {slotDef.index + 1}. {slotDef.labelZh}
-                    </span>
-                  ) : null}
-
-                  <TarotCard3D
-                    card={tarotCard}
-                    deckId={deckId}
-                    themeId={themeId}
-                    flipped={placed.revealed}
-                    reversed={placed.reversed}
-                    size={placedCardSize}
-                    interactive
-                    tiltEnabled={!isDragging}
-                    gyroEnabled={gyroEnabled}
-                    soundEnabled={soundEnabled}
-                    glowActive={isSelected || isDragging}
-                    maxTilt={14}
-                    className="touch-none"
-                  />
-
-                  {/* Compact card name pill once flipped */}
-                  {placed.revealed && !cleanMode && placedCardSize !== "xs" ? (
-                    <div
-                      className="pointer-events-none mt-1.5 flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] backdrop-blur-md"
-                      style={{
-                        borderColor: "var(--border-subtle)",
-                        backgroundColor: "var(--bg-glass)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      <span className="font-serif font-medium tracking-wide">
-                        {tarotCard.nameZh}
-                      </span>
-                      <span
-                        className={
-                          placed.reversed
-                            ? theme.isLight
-                              ? "text-amber-800"
-                              : "text-amber-300"
-                            : "text-[var(--accent-strong)]"
-                        }
-                      >
-                        · {placed.reversed ? "逆" : "正"}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              </motion.div>
+                placed={placed}
+                tarotCard={tarotCard}
+                deckId={deckId}
+                themeId={themeId}
+                isLightTheme={theme.isLight}
+                accentColor={accentColor}
+                accentStrong={accentStrong}
+                placedCardSize={placedCardSize}
+                placedCardScale={placedCardScale}
+                cardWidth={placedCardDims.w}
+                cardHeight={placedCardDims.h}
+                canvasWidth={canvasSize.width}
+                canvasHeight={canvasSize.height}
+                querentFacing={querentFacing}
+                cleanMode={cleanMode}
+                gyroEnabled={gyroEnabled}
+                soundEnabled={soundEnabled}
+                isSelected={selectedCardUid === placed.uid}
+                flipDelay={flipDelays[placed.uid] ?? 0}
+                slotIndexLabel={slotDef?.index}
+                slotLabelZh={slotDef?.labelZh}
+                slotRotation={slotDef?.rotation}
+                activeDraggingUidRef={activeDraggingUidRef}
+                registerControl={registerPlacedCardControl}
+                onPointerDown={handlePlacedCardPointerDown}
+                onPointerMove={handlePlacedCardPointerMove}
+                onPointerUp={handlePlacedCardPointerUp}
+                onPointerCancel={handlePlacedCardPointerCancel}
+                onKeyDown={handlePlacedCardKeyDown}
+              />
             );
           })}
         </AnimatePresence>
@@ -2518,11 +3090,14 @@ export function VirtualTableCanvas({
               className="pointer-events-auto absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
               style={{ top: stackCenterY }}
             >
-              {/* Ambient warm glow beneath physical stack */}
+              {/* Ambient warm glow beneath physical stack (zero-filter radial gradient) */}
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 left-1/2 -z-10 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-                style={{ background: clothGlow, opacity: 0.9 }}
+                className="pointer-events-none absolute top-1/2 left-1/2 -z-10 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  background: `radial-gradient(circle, ${clothGlow} 0%, transparent 70%)`,
+                  opacity: 0.95,
+                }}
               />
 
               {/* 3D Physical Thick Deck Stack */}
@@ -2659,7 +3234,7 @@ export function VirtualTableCanvas({
                   <button
                     type="button"
                     onClick={handleEnterWash}
-                    className="uranai-glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95"
+                    className="uranai-pill-solid inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95"
                   >
                     <Hand className="h-3.5 w-3.5 text-[var(--accent)]" />
                     桌布揉洗
@@ -2669,7 +3244,7 @@ export function VirtualTableCanvas({
                     type="button"
                     onClick={handleRiffleShuffle}
                     disabled={deckAnim !== "idle"}
-                    className="uranai-glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-50"
+                    className="uranai-pill-solid inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-50"
                   >
                     <Shuffle className="h-3.5 w-3.5 text-[var(--accent)]" />
                     交错洗牌
@@ -2679,7 +3254,7 @@ export function VirtualTableCanvas({
                     type="button"
                     onClick={handleCutDeck}
                     disabled={deckAnim !== "idle"}
-                    className="uranai-glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-50"
+                    className="uranai-pill-solid inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-50"
                   >
                     <Scissors className="h-3.5 w-3.5 text-[var(--accent)]" />
                     切牌
@@ -2719,7 +3294,7 @@ export function VirtualTableCanvas({
           {/* Instructional floating ritual whisper */}
           {!cleanMode ? (
             <div className="pointer-events-none absolute top-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] left-1/2 z-[120] -translate-x-1/2">
-              <div className="uranai-glass flex items-center gap-2 rounded-full px-4 py-1.5 text-xs text-[var(--text-primary)]">
+              <div className="uranai-pill-solid flex items-center gap-2 rounded-full px-4 py-1.5 text-xs text-[var(--text-primary)]">
                 <Orbit className="h-3.5 w-3.5 animate-spin text-[var(--accent)] [animation-duration:9s]" />
                 <span className="whitespace-nowrap">
                   {isGatheringWash
@@ -2785,7 +3360,7 @@ export function VirtualTableCanvas({
                 type="button"
                 onClick={handleScatterWashAgain}
                 disabled={isGatheringWash}
-                className="uranai-glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 disabled:opacity-45"
+                className="uranai-pill-solid inline-flex items-center gap-1.5 rounded-full px-3.5 py-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 disabled:opacity-45"
               >
                 <Shuffle className="h-3.5 w-3.5 text-[var(--accent)]" />
                 重新打散
@@ -2898,7 +3473,7 @@ export function VirtualTableCanvas({
                 </svg>
 
                 <div className="mt-1 flex justify-center px-4">
-                  <span className="uranai-glass rounded-full px-4 py-1.5 text-center text-[11px] font-medium tracking-wide text-[var(--accent-strong)] shadow-lg sm:text-xs">
+                  <span className="uranai-pill-solid rounded-full px-4 py-1.5 text-center text-[11px] font-medium tracking-wide text-[var(--accent-strong)] shadow-lg sm:text-xs">
                     ✦ 用手指沿桌布向右拂动，将牌如丝带般摊开
                   </span>
                 </div>
@@ -2916,7 +3491,7 @@ export function VirtualTableCanvas({
                   ),
                 }}
               >
-                <span className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-[11px] text-[var(--text-secondary)]">
+                <span className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-[11px] text-[var(--text-secondary)]">
                   <Sparkles className="h-3 w-3 text-[var(--accent)]" />
                   {hoveredRibbonIdx !== null
                     ? `已指向第 ${hoveredRibbonIdx + 1} / ${ribbonCards.length} 张 · 轻点或上拖出牌`
@@ -2931,21 +3506,34 @@ export function VirtualTableCanvas({
               </div>
             ) : null}
 
-            {/* Full-Pool Overlapping Curved Silk Ribbon Cards */}
+            {/* Full-Pool Overlapping Curved Silk Ribbon Cards (Ref-driven 0-rerender sweep) */}
             {ribbonCards.map((cardId, idx) => {
               const isBeingPulled = ribbonGhost?.cardId === cardId;
+              const isLiveDriving = ribbonLiveDriveRef.current;
+              const renderProgress = isLiveDriving
+                ? spreadProgressRef.current
+                : spreadProgress;
+              const renderDir = isLiveDriving
+                ? ribbonDirectionRef.current
+                : ribbonDirection;
               const { x, y, angle } = getRibbonCardTransform(
                 idx,
                 ribbonCards.length,
-                spreadProgress,
-                ribbonDirection
+                renderProgress,
+                renderDir
               );
               const isFocused =
-                spreadProgress > 0.35 && hoveredRibbonIdx === idx && !isBeingPulled;
+                !isLiveDriving &&
+                renderProgress > 0.35 &&
+                hoveredRibbonIdx === idx &&
+                !isBeingPulled;
 
               return (
                 <div
                   key={cardId}
+                  ref={(el) => {
+                    ribbonCardElsRef.current[idx] = el;
+                  }}
                   aria-hidden="true"
                   className="pointer-events-none absolute top-0 left-0 overflow-hidden rounded-[9px]"
                   style={{
@@ -2960,18 +3548,18 @@ export function VirtualTableCanvas({
                       y -
                       ribbonCardHeight * 0.5 -
                       (isFocused ? 26 : 0)
-                    ).toFixed(1)}px, 0) rotate(${angle.toFixed(1)}deg) scale(${
-                      isFocused ? 1.1 : 1
-                    })`,
-                    transition: ribbonGestureRef.current.active
-                      ? "transform 80ms ease-out, box-shadow 140ms ease"
-                      : "transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease",
+                    ).toFixed(1)}px, 0) rotate(${angle.toFixed(1)}deg)${
+                      isFocused ? " scale(1.1)" : ""
+                    }`,
+                    transition: isLiveDriving
+                      ? "none"
+                      : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease",
                     border: `1px solid ${
                       isFocused ? accentStrong : `${cardEdgeColor}cc`
                     }`,
                     boxShadow: isFocused
                       ? `0 18px 34px rgba(0,0,0,0.62), 0 0 22px ${accentColor}75`
-                      : "0 8px 18px rgba(0,0,0,0.45)",
+                      : "0 2px 4px rgba(0,0,0,0.38)",
                   }}
                 >
                   <CardBackArtwork deckId={deckId} themeId={themeId} lightweight />
@@ -3004,7 +3592,7 @@ export function VirtualTableCanvas({
                         setHoveredRibbonIdx(null);
                       })
                     }
-                    className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
+                    className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
                   >
                     <RotateCcw className="h-3.5 w-3.5 text-[var(--accent)]" />
                     收拢牌堆
@@ -3013,7 +3601,7 @@ export function VirtualTableCanvas({
                   <button
                     type="button"
                     onClick={() => setPhase("stack")}
-                    className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
+                    className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
                   >
                     <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
                     返回叠牌
@@ -3023,7 +3611,7 @@ export function VirtualTableCanvas({
                 <button
                   type="button"
                   onClick={handleEnterWash}
-                  className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
+                  className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
                 >
                   <Hand className="h-3.5 w-3.5 text-[var(--accent)]" />
                   <span className="hidden sm:inline">桌布搓牌</span>
@@ -3037,7 +3625,7 @@ export function VirtualTableCanvas({
                     className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition active:scale-95 ${
                       allSpreadSlotsFilled
                         ? "border border-[var(--border-accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_6px_22px_var(--cloth-glow)] hover:brightness-110"
-                        : "uranai-glass-strong text-[var(--accent-strong)] hover:brightness-110"
+                        : "uranai-pill-solid border-[var(--border-accent)] text-[var(--accent-strong)] hover:brightness-110"
                     }`}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
@@ -3051,24 +3639,23 @@ export function VirtualTableCanvas({
       </AnimatePresence>
 
       {/* =====================================================================
-          LIVE DRAGGED GHOST CARD PULLED OFF RIBBON (z-35)
+          LIVE DRAGGED GHOST CARD PULLED OFF RIBBON (z-35, Ref-driven 0-rerender)
          ===================================================================== */}
       {ribbonGhost ? (
         <div
+          ref={ghostElRef}
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-0 z-[35] overflow-hidden rounded-[10px]"
+          className="pointer-events-none absolute top-0 left-0 z-[35] overflow-hidden rounded-[10px] will-change-transform"
           style={{
             width: Math.round(placedCardDims.w * placedCardScale),
             height: Math.round(placedCardDims.h * placedCardScale),
-            transform: `translate3d(${(
-              ribbonGhost.x -
-              (placedCardDims.w * placedCardScale) / 2
-            ).toFixed(1)}px, ${(
-              ribbonGhost.y -
-              (placedCardDims.h * placedCardScale) / 2
-            ).toFixed(1)}px, 0) rotate(${(ribbonGhost.vx * 0.55).toFixed(1)}deg) scale(1.06)`,
+            transform: formatGhostTransform(
+              ghostPosRef.current.x,
+              ghostPosRef.current.y,
+              ghostPosRef.current.vx
+            ),
             border: `1.5px solid ${accentStrong}`,
-            boxShadow: `0 26px 46px rgba(0,0,0,0.68), 0 0 28px ${accentColor}75`,
+            boxShadow: `0 22px 38px rgba(0,0,0,0.62), 0 0 24px ${accentColor}70`,
           }}
         >
           <CardBackArtwork deckId={deckId} themeId={themeId} />
@@ -3103,7 +3690,7 @@ export function VirtualTableCanvas({
               type="button"
               onClick={() => handleEnterRibbon(true)}
               disabled={availableCardIds.length === 0}
-              className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-45"
+              className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95 disabled:opacity-45"
             >
               <GalleryHorizontalEnd className="h-3.5 w-3.5 text-[var(--accent)]" />
               重新展开牌扇
@@ -3113,7 +3700,7 @@ export function VirtualTableCanvas({
               <button
                 type="button"
                 onClick={handleAlignSpread}
-                className="uranai-glass hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95 sm:inline-flex"
+                className="uranai-pill-solid hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95 sm:inline-flex"
               >
                 <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
                 对齐牌阵
@@ -3124,7 +3711,7 @@ export function VirtualTableCanvas({
               <button
                 type="button"
                 onClick={handleResetAll}
-                className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-rose-400/45 hover:text-rose-200 active:scale-95"
+                className="uranai-pill-solid inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-rose-400/45 hover:text-rose-200 active:scale-95"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">清空重来</span>
@@ -3150,7 +3737,7 @@ export function VirtualTableCanvas({
             }}
             aria-label="退出纯净视图"
             title="恢复桌面控制栏"
-            className="uranai-glass flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] opacity-45 transition hover:opacity-100 hover:text-[var(--accent-strong)] active:scale-95"
+            className="uranai-pill-solid flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] opacity-45 transition hover:opacity-100 hover:text-[var(--accent-strong)] active:scale-95"
           >
             <Eye className="h-4 w-4" />
           </button>
@@ -3166,7 +3753,7 @@ export function VirtualTableCanvas({
             <button
               type="button"
               onClick={onExit}
-              className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
+              className="uranai-pill-solid inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
             >
               <ArrowLeft className="h-3.5 w-3.5 text-[var(--accent)]" />
               <span className="hidden sm:inline">退出桌面</span>
@@ -3180,7 +3767,7 @@ export function VirtualTableCanvas({
                   soundEngine.playHoverTick(soundEnabled);
                   setSpreadMenuOpen((o) => !o);
                 }}
-                className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
+                className="uranai-pill-solid inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95"
               >
                 <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
                 <span className="max-w-[96px] truncate sm:max-w-[132px]">
@@ -3202,7 +3789,7 @@ export function VirtualTableCanvas({
                 />
               </button>
 
-              {/* Spread Selector Popover */}
+              {/* Spread Selector Popover (retains .uranai-glass-strong) */}
               <AnimatePresence>
                 {spreadMenuOpen ? (
                   <motion.div
@@ -3280,7 +3867,7 @@ export function VirtualTableCanvas({
                   setSpreadMenuOpen(false);
                   onOpenDeckPoolModal();
                 }}
-                className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
+                className="uranai-pill-solid inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
                 title="设置参与洗牌的牌池范围（全牌 78 张 / 仅大阿卡纳 / 仅小牌 / 花色 / 单张剔除）"
               >
                 <Filter className="h-3.5 w-3.5 text-[var(--accent)]" />
@@ -3292,7 +3879,7 @@ export function VirtualTableCanvas({
             <button
               type="button"
               onClick={onOpenClothSheet}
-              className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
+              className="uranai-pill-solid inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
               title={`切换桌布（当前：${theme.clothNameZh}）`}
             >
               <span
@@ -3308,7 +3895,7 @@ export function VirtualTableCanvas({
             <button
               type="button"
               onClick={onOpenDeckSheet}
-              className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
+              className="uranai-pill-solid inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
               title={`切换卡组（当前：${deck.nameZh}）`}
             >
               <Palette className="h-3.5 w-3.5 text-[var(--accent)]" />
@@ -3324,7 +3911,7 @@ export function VirtualTableCanvas({
             {wakeLockActive ? (
               <div
                 title="屏幕常亮已开启，桌布不会自动息屏"
-                className="uranai-glass hidden h-9 items-center gap-1.5 rounded-full px-2.5 text-[11px] text-[var(--text-secondary)] md:inline-flex"
+                className="uranai-pill-solid hidden h-9 items-center gap-1.5 rounded-full px-2.5 text-[11px] text-[var(--text-secondary)] md:inline-flex"
               >
                 <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]" />
                 <span>常亮</span>
@@ -3343,7 +3930,7 @@ export function VirtualTableCanvas({
               className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
                 querentFacing
                   ? "border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-[0_0_16px_var(--cloth-glow)]"
-                  : "uranai-glass text-[var(--text-primary)] hover:border-[var(--border-accent)]"
+                  : "uranai-pill-solid text-[var(--text-primary)] hover:border-[var(--border-accent)]"
               }`}
             >
               <FlipVertical2 className="h-3.5 w-3.5" />
@@ -3358,7 +3945,7 @@ export function VirtualTableCanvas({
                 type="button"
                 onClick={onToggleFullscreen}
                 title={isFullscreen ? "退出全屏" : "全屏桌布模式"}
-                className="uranai-glass hidden h-9 w-9 items-center justify-center rounded-full text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:inline-flex"
+                className="uranai-pill-solid hidden h-9 w-9 items-center justify-center rounded-full text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:inline-flex"
               >
                 {isFullscreen ? (
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -3378,7 +3965,7 @@ export function VirtualTableCanvas({
                 setCleanMode(true);
               }}
               title="纯净视图：隐藏全部控制栏，专注沉浸式桌面仪式"
-              className="uranai-glass inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95"
+              className="uranai-pill-solid inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95"
             >
               <EyeOff className="h-3.5 w-3.5" />
             </button>
@@ -3405,7 +3992,7 @@ export function VirtualTableCanvas({
       {/* Subtle Querent-Facing Indicator Pill (when active and not cleanMode) */}
       {querentFacing && !cleanMode ? (
         <div className="pointer-events-none fixed top-[max(3.6rem,calc(env(safe-area-inset-top)+2.85rem))] right-3 z-[36] sm:right-5">
-          <span className="uranai-glass inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--accent-strong)]">
+          <span className="uranai-pill-solid inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--accent-strong)]">
             <RotateCw className="h-2.5 w-2.5" />
             对坐视角 · 桌面牌面已翻转 180°
           </span>
@@ -3413,4 +4000,4 @@ export function VirtualTableCanvas({
       ) : null}
     </div>
   );
-}
+});

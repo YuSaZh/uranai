@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -109,7 +109,15 @@ function getDomainInsight(
   }
 }
 
-export function TableReadingDrawer({
+const EMPTY_PLACED_CARDS: TablePlacedCard[] = [];
+const EMPTY_AI_CARDS: AiReadingCardInput[] = [];
+
+interface TableReadingDrawerContentProps extends TableReadingDrawerProps {
+  panelRotated: boolean;
+  onTogglePanelRotated: () => void;
+}
+
+function TableReadingDrawerContent({
   open,
   onClose,
   placedCards,
@@ -129,7 +137,9 @@ export function TableReadingDrawer({
   aiInterpretation,
   onAiComplete,
   onSaveHistory,
-}: TableReadingDrawerProps) {
+  panelRotated,
+  onTogglePanelRotated,
+}: TableReadingDrawerContentProps) {
   const { aiConfig } = useUranai();
   const theme = getThemeById(themeId);
   const deck = getDeckById(deckId);
@@ -139,21 +149,10 @@ export function TableReadingDrawer({
     [spreadId]
   );
 
-  const [mounted, setMounted] = useState(false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const [panelRotated, setPanelRotated] = useState<boolean>(false);
   const [thumbErrorSlug, setThumbErrorSlug] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Reset panel rotation cleanly when tabletop querent-facing mode turns off
-  useEffect(() => {
-    if (!querentFacing && panelRotated) {
-      setPanelRotated(false);
-    }
-  }, [querentFacing, panelRotated]);
+  const effectivePanelRotated = querentFacing && panelRotated;
 
   // Escape key closes drawer
   useEffect(() => {
@@ -167,20 +166,21 @@ export function TableReadingDrawer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
-  const sortedCards = useMemo(
-    () => [...placedCards].sort((a, b) => a.slotIndex - b.slotIndex),
-    [placedCards]
-  );
+  const sortedCards = useMemo(() => {
+    if (!open) return EMPTY_PLACED_CARDS;
+    return [...placedCards].sort((a, b) => a.slotIndex - b.slotIndex);
+  }, [open, placedCards]);
 
-  const revealedCards = useMemo(
-    () => sortedCards.filter((c) => c.revealed),
-    [sortedCards]
-  );
+  const revealedCards = useMemo(() => {
+    if (!open) return EMPTY_PLACED_CARDS;
+    return sortedCards.filter((c) => c.revealed);
+  }, [open, sortedCards]);
 
   const unrevealedCount = sortedCards.length - revealedCards.length;
 
   // Keep selectedUid valid whenever cards change
   useEffect(() => {
+    if (!open) return;
     if (sortedCards.length === 0) {
       setSelectedUid(null);
       return;
@@ -190,10 +190,10 @@ export function TableReadingDrawer({
       const firstRevealed = sortedCards.find((c) => c.revealed);
       setSelectedUid((firstRevealed ?? sortedCards[0]).uid);
     }
-  }, [selectedUid, sortedCards]);
+  }, [open, selectedUid, sortedCards]);
 
   const selectedEntry = useMemo(() => {
-    if (!sortedCards.length) return null;
+    if (!open || !sortedCards.length) return null;
     const found = sortedCards.find((c) => c.uid === selectedUid) ?? sortedCards[0];
     const indexInSorted = sortedCards.findIndex((c) => c.uid === found.uid);
     const card = getCardById(found.cardId);
@@ -207,7 +207,7 @@ export function TableReadingDrawer({
         : `第 ${indexInSorted + 1} 张`,
       slotDescription: slot?.description ?? "桌面自由排布位置",
     };
-  }, [activeSpread?.slots, selectedUid, sortedCards]);
+  }, [activeSpread?.slots, open, selectedUid, sortedCards]);
 
   const selectedThumbPath = selectedEntry
     ? getCardImagePath(deckId, selectedEntry.card.slug)
@@ -231,6 +231,7 @@ export function TableReadingDrawer({
   }, [activeSpread, revealedCards.length]);
 
   const aiCardsPayload = useMemo<AiReadingCardInput[]>(() => {
+    if (!open || revealedCards.length === 0) return EMPTY_AI_CARDS;
     return revealedCards.flatMap((placed, idx): AiReadingCardInput[] => {
       const card = getCardById(placed.cardId);
       if (!card) return [];
@@ -251,45 +252,39 @@ export function TableReadingDrawer({
         },
       ];
     });
-  }, [activeSpread?.slots, revealedCards]);
+  }, [activeSpread?.slots, open, revealedCards]);
 
-  if (!mounted || typeof document === "undefined") {
-    return null;
-  }
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-end justify-end md:items-stretch"
+      role="dialog"
+      aria-modal="true"
+      aria-label="桌面牌阵解牌与 AI 推演"
+    >
+      {/* Dimmed Velvet Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/55 backdrop-blur-sm"
+      />
 
-  return createPortal(
-    <AnimatePresence>
-      {open ? (
-        <div
-          className="fixed inset-0 z-[90] flex items-end justify-end md:items-stretch"
-          role="dialog"
-          aria-modal="true"
-          aria-label="桌面牌阵解牌与 AI 推演"
-        >
-          {/* Dimmed Velvet Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/55 backdrop-blur-sm"
-          />
-
-          {/* Responsive Sanctuary Drawer (Right side on iPad/Desktop, Bottom sheet on Mobile) */}
-          <motion.aside
-            initial={{ opacity: 0, y: 40, x: 0 }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              x: 0,
-              rotate: panelRotated ? 180 : 0,
-            }}
-            exit={{ opacity: 0, y: 36 }}
-            transition={{ type: "spring", stiffness: 320, damping: 32 }}
-            style={{ transformOrigin: "center center" }}
-            className="uranai-glass-strong relative z-10 flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-[var(--border-accent)] shadow-2xl md:h-full md:max-h-[100dvh] md:max-w-md md:rounded-none md:border-t-0 md:border-l"
-          >
+      {/* Responsive Sanctuary Drawer (Right side on iPad/Desktop, Bottom sheet on Mobile) */}
+      <motion.aside
+        initial={{ opacity: 0, y: 40, x: 0 }}
+        animate={{
+          opacity: 1,
+          y: 0,
+          x: 0,
+          rotate: effectivePanelRotated ? 180 : 0,
+        }}
+        exit={{ opacity: 0, y: 36 }}
+        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        style={{ transformOrigin: "center center" }}
+        className="uranai-glass-strong relative z-10 flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-[var(--border-accent)] shadow-2xl md:h-full md:max-h-[100dvh] md:max-w-md md:rounded-none md:border-t-0 md:border-l"
+      >
             {/* Mobile Sheet Grab Indicator */}
             <div className="flex justify-center pt-2.5 pb-1 md:hidden">
               <div className="h-1 w-10 rounded-full bg-[var(--text-muted)]/40" />
@@ -353,7 +348,7 @@ export function TableReadingDrawer({
               {querentFacing ? (
                 <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-[var(--border-accent)] bg-[var(--accent-soft)]/70 px-3 py-2">
                   <span className="text-[11px] text-[var(--text-primary)]">
-                    {panelRotated
+                    {effectivePanelRotated
                       ? "当前为对坐 180° 阅读视角"
                       : "对坐模式已开启 · 可旋转面板供桌对面阅读"}
                   </span>
@@ -361,12 +356,12 @@ export function TableReadingDrawer({
                     type="button"
                     onClick={() => {
                       soundEngine.playHoverTick(soundEnabled);
-                      setPanelRotated((r) => !r);
+                      onTogglePanelRotated();
                     }}
                     className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-accent)] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-contrast)] transition hover:brightness-110 active:scale-95"
                   >
                     <RotateCw className="h-3 w-3" />
-                    {panelRotated ? "恢复正向" : "180° 对坐旋转面板"}
+                    {effectivePanelRotated ? "恢复正向" : "180° 对坐旋转面板"}
                   </button>
                 </div>
               ) : null}
@@ -769,10 +764,90 @@ export function TableReadingDrawer({
                 </button>
               )}
             </footer>
-          </motion.aside>
-        </div>
+      </motion.aside>
+    </div>
+  );
+}
+
+function areTableReadingDrawerPropsEqual(
+  prev: TableReadingDrawerProps,
+  next: TableReadingDrawerProps
+): boolean {
+  // While closed before and after, completely ignore tabletop state churn
+  if (!prev.open && !next.open) {
+    return true;
+  }
+  return (
+    prev.open === next.open &&
+    prev.onClose === next.onClose &&
+    prev.placedCards === next.placedCards &&
+    prev.spreadId === next.spreadId &&
+    prev.category === next.category &&
+    prev.onCategoryChange === next.onCategoryChange &&
+    prev.question === next.question &&
+    prev.onQuestionChange === next.onQuestionChange &&
+    prev.deckId === next.deckId &&
+    prev.themeId === next.themeId &&
+    prev.soundEnabled === next.soundEnabled &&
+    prev.querentFacing === next.querentFacing &&
+    prev.onToggleQuerentFacing === next.onToggleQuerentFacing &&
+    prev.onInspectCard === next.onInspectCard &&
+    prev.onRevealAll === next.onRevealAll &&
+    prev.savedRecordId === next.savedRecordId &&
+    prev.aiInterpretation === next.aiInterpretation &&
+    prev.onAiComplete === next.onAiComplete &&
+    prev.onSaveHistory === next.onSaveHistory
+  );
+}
+
+export const TableReadingDrawer = React.memo(function TableReadingDrawer(
+  props: TableReadingDrawerProps
+) {
+  const [mounted, setMounted] = useState(false);
+  const [keepMounted, setKeepMounted] = useState(props.open);
+  const [panelRotated, setPanelRotated] = useState(false);
+  const openRef = useRef(props.open);
+  openRef.current = props.open;
+
+  if (props.open && !keepMounted) {
+    setKeepMounted(true);
+  }
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!props.querentFacing && panelRotated) {
+      setPanelRotated(false);
+    }
+  }, [props.querentFacing, panelRotated]);
+
+  const handleTogglePanelRotated = useCallback(() => {
+    setPanelRotated((r) => !r);
+  }, []);
+
+  const handleExitComplete = useCallback(() => {
+    if (!openRef.current) {
+      setKeepMounted(false);
+    }
+  }, []);
+
+  if (!mounted || typeof document === "undefined" || (!props.open && !keepMounted)) {
+    return null;
+  }
+
+  return createPortal(
+    <AnimatePresence onExitComplete={handleExitComplete}>
+      {props.open ? (
+        <TableReadingDrawerContent
+          key="table-reading-drawer-content"
+          {...props}
+          panelRotated={panelRotated}
+          onTogglePanelRotated={handleTogglePanelRotated}
+        />
       ) : null}
     </AnimatePresence>,
     document.body
   );
-}
+}, areTableReadingDrawerPropsEqual);

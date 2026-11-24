@@ -87,6 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         theme={theme}
         detail={prefs.clothDetail}
         gyroEnabled={prefs.gyroEnabled}
+        subtle={isTableMode}
       />
 
       {isTableMode ? (
