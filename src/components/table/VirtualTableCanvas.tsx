@@ -1862,8 +1862,12 @@ export function VirtualTableCanvas({
     () =>
       placedCards
         .filter((c) => c.revealed)
-        .sort((a, b) => a.slotIndex - b.slotIndex),
-    [placedCards]
+        .sort((a, b) =>
+          activeSpread
+            ? a.slotIndex - b.slotIndex
+            : a.xPct - b.xPct || a.yPct - b.yPct
+        ),
+    [activeSpread, placedCards]
   );
   const selectedRevealedIdx = useMemo(() => {
     if (!selectedPlacedCard) return -1;
@@ -2237,10 +2241,11 @@ export function VirtualTableCanvas({
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={`${selectedTarotCard.nameZh} 基础牌义浮窗`}
-            className={`uranai-glass-strong gold-shimmer-border pointer-events-auto fixed right-3 z-[42] flex w-[min(352px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-3xl shadow-[0_18px_52px_rgba(0,0,0,0.55)] sm:right-5 ${
+            style={{ position: "fixed" }}
+            className={`uranai-glass-strong gold-shimmer-border pointer-events-auto fixed right-3 z-[42] flex w-[min(368px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-3xl shadow-[0_18px_52px_rgba(0,0,0,0.55)] sm:right-5 ${
               phase === "ribbon"
                 ? "bottom-[max(13.2rem,calc(env(safe-area-inset-bottom)+12.4rem))]"
-                : "bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.75rem))] md:bottom-[max(1.1rem,env(safe-area-inset-bottom))]"
+                : "bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.75rem))] md:bottom-[max(1.25rem,env(safe-area-inset-bottom))]"
             }`}
           >
             {/* Header */}
@@ -2250,7 +2255,7 @@ export function VirtualTableCanvas({
                   <span className="inline-flex items-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-strong)]">
                     {selectedSlotMeta
                       ? `${selectedPlacedCard.slotIndex + 1}. ${selectedSlotMeta.labelZh}`
-                      : `第 ${selectedRevealedIdx >= 0 ? selectedRevealedIdx + 1 : 1} 张`}
+                      : `第 ${selectedRevealedIdx >= 0 ? selectedRevealedIdx + 1 : 1} / ${revealedOrderedCards.length} 张`}
                   </span>
                   <span
                     className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${

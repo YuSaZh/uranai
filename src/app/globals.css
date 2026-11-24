@@ -147,29 +147,31 @@ html[data-light="true"] .uranai-glass-strong {
   animation: uranai-shimmer 7s linear infinite;
 }
 
-.gold-shimmer-border {
-  position: relative;
-}
+@layer components {
+  .gold-shimmer-border {
+    position: relative;
+  }
 
-.gold-shimmer-border::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    130deg,
-    transparent 8%,
-    var(--border-accent) 44%,
-    var(--accent-strong) 52%,
-    var(--border-subtle) 64%,
-    transparent 92%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.8;
+  .gold-shimmer-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      130deg,
+      transparent 8%,
+      var(--border-accent) 44%,
+      var(--accent-strong) 52%,
+      var(--border-subtle) 64%,
+      transparent 92%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.8;
+  }
 }
 
 .animate-float-slow {
