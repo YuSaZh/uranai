@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Sparkles,
@@ -18,6 +19,7 @@ import {
   Coins,
   BookOpen,
   Compass,
+  Tablet,
 } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
 import {
@@ -397,16 +399,26 @@ export default function ReadingPage() {
               定制问题牌阵占卜
             </h1>
           </div>
-          {step === 4 && (
-            <button
-              type="button"
-              onClick={handleStartNewReading}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95"
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/table"
+              onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--bg-surface)]/75 px-3.5 py-1.5 text-xs font-medium text-[var(--accent-strong)] backdrop-blur-md transition hover:bg-[var(--accent-soft)] hover:brightness-110 active:scale-95"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
-              开启新的占卜
-            </button>
-          )}
+              <Tablet className="h-3.5 w-3.5 text-[var(--accent)]" />
+              <span>切换虚拟桌面模式 (iPad)</span>
+            </Link>
+            {step === 4 && (
+              <button
+                type="button"
+                onClick={handleStartNewReading}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                开启新的占卜
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 4-Step Progress Stepper */}

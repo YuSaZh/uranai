@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   Layers,
   Palette,
+  Tablet,
   Check,
   X,
 } from "lucide-react";
@@ -42,146 +43,187 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { theme, deck, prefs, setThemeId, setDeckId } = useUranai();
   const [sheet, setSheet] = useState<QuickSheetMode>(null);
 
+  const isTableMode = pathname === "/table";
+
+  useEffect(() => {
+    setSheet(null);
+  }, [pathname]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSheet(null);
     };
+    const onOpenSheet = (event: Event) => {
+      const detail = (event as CustomEvent<QuickSheetMode>).detail;
+      if (detail === "cloth" || detail === "deck" || detail === null) {
+        setSheet(detail);
+      }
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("uranai:open-sheet", onOpenSheet);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("uranai:open-sheet", onOpenSheet);
+    };
   }, []);
 
   const shortDeckLabel = deck.id === "mucha-hamster" ? "穆夏仓鼠" : "伟特";
   const shortClothLabel = theme.nameZh.slice(0, 4);
 
   return (
-    <div className="relative min-h-dvh w-full text-[var(--text-primary)]">
+    <div
+      className={
+        isTableMode
+          ? "relative h-[100dvh] w-[100dvw] overflow-hidden text-[var(--text-primary)]"
+          : "relative min-h-dvh w-full text-[var(--text-primary)]"
+      }
+    >
       {/* Persistent full-bleed reading cloth stage */}
       <ClothStage theme={theme} />
 
-      {/* Top frosted luxury header with iOS status-bar safe-area scrim */}
-      <header
-        className="pt-safe sticky top-0 z-30 w-full px-3 pb-1.5 sm:px-5"
-        style={{
-          background:
-            "linear-gradient(to bottom, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 82%, transparent) 68%, transparent 100%)",
-        }}
-      >
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl px-3.5 uranai-glass sm:px-5">
-          <Link
-            href="/"
-            className="group flex items-center gap-2.5 focus:outline-none"
+      {isTableMode ? (
+        <div className="relative h-[100dvh] w-[100dvw] overflow-hidden">
+          {children}
+        </div>
+      ) : (
+        <>
+          {/* Top frosted luxury header with iOS status-bar safe-area scrim */}
+          <header
+            className="pt-safe sticky top-0 z-30 w-full px-3 pb-1.5 sm:px-5"
+            style={{
+              background:
+                "linear-gradient(to bottom, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 82%, transparent) 68%, transparent 100%)",
+            }}
           >
-            <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_16px_var(--cloth-glow)] transition-transform duration-300 group-hover:scale-105">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4 fill-current"
-                aria-hidden="true"
-              >
-                <path d="M12 1.8l2.15 7.05L21.2 11l-7.05 2.15L12 20.2l-2.15-7.05L2.8 11l7.05-2.15L12 1.8z" />
-              </svg>
-            </span>
-            <div className="flex flex-col leading-none">
-              <span className="font-display text-sm font-semibold tracking-[0.26em] text-[var(--text-primary)] sm:text-[0.95rem]">
-                URANAI
-              </span>
-              <span className="mt-0.5 text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
-                星穹塔罗
-              </span>
-            </div>
-          </Link>
-
-          {/* 1-tap quick Cloth & Deck pills */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playHoverTick(prefs.soundEnabled);
-                setSheet((prev) => (prev === "cloth" ? null : "cloth"));
-              }}
-              aria-label="切换占卜桌布"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
-                sheet === "cloth"
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                  : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/30 shadow-sm"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.swatches[1]}, ${theme.swatches[2]})`,
-                }}
-              />
-              <span className="max-w-[4.5rem] truncate">{shortClothLabel}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playHoverTick(prefs.soundEnabled);
-                setSheet((prev) => (prev === "deck" ? null : "deck"));
-              }}
-              aria-label="切换塔罗卡组"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
-                sheet === "deck"
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                  : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
-              <span>{shortDeckLabel}</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main page container (no z-index stacking context so page modals always layer above header/nav) */}
-      <main className="relative mx-auto w-full max-w-4xl px-4 pt-5 pb-32 sm:px-6 sm:pt-7 sm:pb-36">
-        {children}
-      </main>
-
-      {/* Floating mobile-first bottom navigation dock */}
-      <nav
-        aria-label="主导航"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))]"
-      >
-        <div className="pointer-events-auto flex w-full max-w-md items-center justify-around rounded-[1.6rem] p-1.5 uranai-glass-strong">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
-
-            return (
+            <div className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl px-3.5 uranai-glass sm:px-5">
               <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-2 text-[11px] font-medium transition-colors ${
-                  active
-                    ? "text-[var(--accent-strong)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                }`}
+                href="/"
+                className="group flex shrink-0 items-center gap-2.5 focus:outline-none"
               >
-                {active && (
-                  <motion.span
-                    layoutId="uranai-nav-pill"
-                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                    className="absolute inset-0.5 rounded-2xl border border-[var(--border-accent)] bg-[var(--accent-soft)] shadow-[0_0_20px_var(--cloth-glow)]"
-                  />
-                )}
-                <Icon className="relative z-10 h-[18px] w-[18px]" />
-                <span className="relative z-10 tracking-wide">{item.label}</span>
+                <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_16px_var(--cloth-glow)] transition-transform duration-300 group-hover:scale-105">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 fill-current"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 1.8l2.15 7.05L21.2 11l-7.05 2.15L12 20.2l-2.15-7.05L2.8 11l7.05-2.15L12 1.8z" />
+                  </svg>
+                </span>
+                <div className="flex flex-col leading-none">
+                  <span className="font-display text-sm font-semibold tracking-[0.26em] text-[var(--text-primary)] sm:text-[0.95rem]">
+                    URANAI
+                  </span>
+                  <span className="mt-0.5 text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
+                    星穹塔罗
+                  </span>
+                </div>
               </Link>
-            );
-          })}
-        </div>
-      </nav>
+
+              {/* 1-tap Virtual Tabletop, Cloth & Deck pills */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Link
+                  href="/table"
+                  onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+                  aria-label="进入虚拟占卜桌面模式"
+                  title="虚拟占卜桌面模式"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-1.5 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95 sm:px-3"
+                >
+                  <Tablet className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+                  <span className="hidden sm:inline">桌面</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playHoverTick(prefs.soundEnabled);
+                    setSheet((prev) => (prev === "cloth" ? null : "cloth"));
+                  }}
+                  aria-label="切换占卜桌布"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
+                    sheet === "cloth"
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                      : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/30 shadow-sm"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.swatches[1]}, ${theme.swatches[2]})`,
+                    }}
+                  />
+                  <span className="max-w-[4.5rem] truncate">{shortClothLabel}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playHoverTick(prefs.soundEnabled);
+                    setSheet((prev) => (prev === "deck" ? null : "deck"));
+                  }}
+                  aria-label="切换塔罗卡组"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
+                    sheet === "deck"
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                      : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
+                  <span>{shortDeckLabel}</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main page container (no z-index stacking context so page modals always layer above header/nav) */}
+          <main className="relative mx-auto w-full max-w-4xl px-4 pt-5 pb-32 sm:px-6 sm:pt-7 sm:pb-36">
+            {children}
+          </main>
+
+          {/* Floating mobile-first bottom navigation dock */}
+          <nav
+            aria-label="主导航"
+            className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))]"
+          >
+            <div className="pointer-events-auto flex w-full max-w-md items-center justify-around rounded-[1.6rem] p-1.5 uranai-glass-strong">
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const active =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+                    className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl py-2 text-[11px] font-medium transition-colors ${
+                      active
+                        ? "text-[var(--accent-strong)]"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="uranai-nav-pill"
+                        transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                        className="absolute inset-0.5 rounded-2xl border border-[var(--border-accent)] bg-[var(--accent-soft)] shadow-[0_0_20px_var(--cloth-glow)]"
+                      />
+                    )}
+                    <Icon className="relative z-10 h-[18px] w-[18px]" />
+                    <span className="relative z-10 tracking-wide">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        </>
+      )}
 
       {/* Quick Cloth / Deck Frosted Bottom Sheet & Popover */}
       <AnimatePresence>
         {sheet !== null && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
+          <div className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center sm:p-6">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

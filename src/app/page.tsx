@@ -13,6 +13,7 @@ import {
   Eye,
   Flame,
   Star,
+  Tablet,
 } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
 import { TAROT_CARDS, getCardById } from "@/data/tarot-cards";
@@ -455,6 +456,37 @@ export default function DailyOraclePage() {
 
       {/* Bottom Quick Entry Cards */}
       <section className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <Link
+          href="/table"
+          onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+          className="uranai-glass gold-shimmer-border group relative flex items-center justify-between gap-4 overflow-hidden rounded-3xl p-4 transition hover:-translate-y-0.5 hover:border-[var(--border-accent)] sm:col-span-2 sm:p-5"
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-10 right-8 h-32 w-48 rounded-full opacity-35 blur-2xl transition-opacity duration-500 group-hover:opacity-60"
+            style={{ background: "var(--cloth-glow)" }}
+          />
+          <div className="relative flex items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_20px_var(--cloth-glow)]">
+              <Tablet className="h-5 w-5" />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-base font-semibold text-[var(--text-primary)]">
+                  iPad 虚拟占卜桌面模式
+                </h2>
+                <span className="rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium tracking-wide text-[var(--accent-strong)]">
+                  全屏桌面沉浸
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">
+                平放设备化身真实丝绒桌布 · 手指揉洗搓牌、丝带拂动摊牌、自由拖拽摆阵
+              </p>
+            </div>
+          </div>
+          <ArrowRight className="relative h-4 w-4 shrink-0 text-[var(--accent)] transition-transform group-hover:translate-x-1" />
+        </Link>
+
         <Link
           href="/reading"
           onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
