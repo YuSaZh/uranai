@@ -315,14 +315,13 @@ export const TarotCard3D = memo(function TarotCard3D({
     [cardEdgeColor, accentStrong, accentColor]
   );
 
+  // Soft neutral ground shadow for flat/tabletop cards (colored border aura lives inside 3D cardSlabFaces)
   const staticBoxShadow = useMemo(
     () =>
-      glowActive
-        ? `0 12px 26px 0px rgba(0,0,0,0.6), 0 0 26px 2px ${accentColor}52, 0 0 48px 5px ${accentColor}24`
-        : isCompactTabletop
-          ? "0 10px 18px 0px rgba(0,0,0,0.52)"
-          : "0 12px 22px 0px rgba(0,0,0,0.56)",
-    [glowActive, accentColor, isCompactTabletop]
+      isCompactTabletop
+        ? "0 10px 18px 0px rgba(0,0,0,0.5)"
+        : "0 12px 22px 0px rgba(0,0,0,0.54)",
+    [isCompactTabletop]
   );
 
   // Free-orbit 360° optical math (preserved 100% for CardInspectorModal)
@@ -342,30 +341,16 @@ export const TarotCard3D = memo(function TarotCard3D({
     ? Math.round(50 + orbitSinX * 32 + orbitSinY * 22)
     : 50;
 
-  // Free-orbit cast shadow & dual-face specular optics
-  const orbitShadowOffsetX = isFreeOrbit
-    ? Math.round(-Math.sin(2 * orbitRadY) * 14 * 10) / 10
+  // Soft diffused floor shadow metrics beneath the floating 360° free-orbit card
+  const orbitFloorScaleX = isFreeOrbit
+    ? Math.round((0.46 + orbitCosYAbs * 0.54) * (isOrbitDragging ? 0.9 : 1) * 1000) /
+      1000
+    : 1;
+  const orbitFloorOpacity = isFreeOrbit
+    ? isOrbitDragging
+      ? 0.55
+      : Math.round((0.45 + orbitCosYAbs * 0.35) * 100) / 100
     : 0;
-  const orbitShadowOffsetY = isFreeOrbit
-    ? Math.round((orbitSinX * 16 + (isOrbitDragging ? 24 : 12)) * 10) / 10
-    : 10;
-  const orbitShadowBlur = isFreeOrbit
-    ? isOrbitDragging
-      ? 38
-      : 20 + Math.round((1 - orbitCosYAbs) * 10)
-    : 18;
-  const orbitShadowSpread = isFreeOrbit && isOrbitDragging ? 4 : 0;
-  const orbitShadowScaleX = isFreeOrbit
-    ? Math.round(
-        (0.2 + orbitCosYAbs * 0.8) * (isOrbitDragging ? 1.03 : 0.96) * 1000
-      ) / 1000
-    : 0.96;
-  const orbitShadowScaleY = isFreeOrbit ? (isOrbitDragging ? 1.04 : 0.96) : 0.96;
-  const orbitShadowOpacity = isFreeOrbit
-    ? isOrbitDragging
-      ? 0.94
-      : Math.round((0.58 + orbitCosYAbs * 0.28) * 100) / 100
-    : 0.85;
 
   const orbitGlareY = isFreeOrbit
     ? Math.round(clamp(50 - orbitSinX * 44, 4, 96) * 100) / 100
@@ -456,6 +441,20 @@ export const TarotCard3D = memo(function TarotCard3D({
 
   const cardSlabFaces = (
     <>
+      {/* 3D Perspective Border Aura Plate — sandwiched at z=0 inside preserve-3d so border glow follows every pitch/yaw/flip degree */}
+      {glowActive ? (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-0 ${radiusClass}`}
+          style={{
+            transform: "translateZ(0px)",
+            boxShadow: isFreeOrbit
+              ? `0 0 24px 2px ${accentColor}66, 0 0 48px 5px ${accentColor}2c`
+              : `0 0 22px 2px ${accentColor}52, 0 0 42px 4px ${accentColor}22`,
+          }}
+        />
+      ) : null}
+
       {/* Simulated 350gsm Stacked Metallic Gilded Gold Card Edge Slices (6 slices) */}
       {renderEdgeSlices
         ? EDGE_SLICES_Z.map((zPx, idx) => {
@@ -844,32 +843,34 @@ export const TarotCard3D = memo(function TarotCard3D({
           WebkitTouchCallout: "none",
         }}
       >
-        {/* Dynamic Cast Shadow + Living Candlelight Aura (static box-shadow in standard mode) */}
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none absolute inset-1 ${radiusClass} ${
-            isFreeOrbit ? "" : "transition-opacity duration-500"
-          }`}
-          style={
-            isFreeOrbit
-              ? {
-                  transform: `translate3d(${orbitShadowOffsetX}px, ${orbitShadowOffsetY}px, 0) scale(${orbitShadowScaleX}, ${orbitShadowScaleY})`,
-                  boxShadow: glowActive
-                    ? `0 ${orbitShadowOffsetY}px ${orbitShadowBlur}px ${orbitShadowSpread}px rgba(0,0,0,0.62), 0 0 28px 3px ${accentColor}55, 0 0 56px 6px ${accentColor}26`
-                    : `0 ${Math.max(6, orbitShadowOffsetY * 0.6)}px ${orbitShadowBlur}px ${orbitShadowSpread}px rgba(0,0,0,0.58)`,
-                  opacity: orbitShadowOpacity,
-                  willChange: "transform",
-                }
-              : {
-                  transform: `translate3d(var(--shadow-x, 0px), calc(var(--shadow-y, 0px) + ${
-                    isFlipping ? 20 : 10
-                  }px), 0) scale(${isFlipping ? 1.04 : 0.96})`,
-                  boxShadow: staticBoxShadow,
-                  opacity: isFlipping ? 0.95 : 0.85,
-                  willChange: isFlipping ? "transform" : undefined,
-                }
-          }
-        />
+        {/* Cast Shadow: soft oval floor pool in 360° free-orbit (no unrotated upright box!); neutral drop shadow in standard/tabletop mode */}
+        {isFreeOrbit ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-[12%] -bottom-6 h-8 rounded-full"
+            style={{
+              background:
+                "radial-gradient(ellipse at center, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.24) 48%, transparent 74%)",
+              transform: `scaleX(${orbitFloorScaleX})`,
+              opacity: orbitFloorOpacity,
+              transition: "opacity 180ms ease",
+              willChange: "transform",
+            }}
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-1 ${radiusClass} transition-opacity duration-300`}
+            style={{
+              transform: `translate3d(var(--shadow-x, 0px), calc(var(--shadow-y, 0px) + ${
+                isFlipping ? 18 : 10
+              }px), 0) scale(${isFlipping ? 0.9 : 0.96})`,
+              boxShadow: staticBoxShadow,
+              opacity: isFlipping ? 0.45 : 0.85,
+              willChange: isFlipping ? "transform" : undefined,
+            }}
+          />
+        )}
 
         {isFreeOrbit ? (
           /* Free 360° Orbit Mode: tactile grab lift + zero-lag direct 60fps 3D transform */
