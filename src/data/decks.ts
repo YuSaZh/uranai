@@ -21,6 +21,7 @@ export const DECKS: DeckDefinition[] = [
     basePath: "/decks/rws",
     badge: "全套 78 张",
     frameStyle: "classic-gold",
+    aspectClass: "aspect-[7/12]",
   },
   {
     id: "mucha-hamster",
@@ -40,11 +41,16 @@ export const DECKS: DeckDefinition[] = [
         ? "全套 78 张"
         : `高清实装 ${MUCHA_AVAILABLE_SLUGS.size}/78`,
     frameStyle: "art-nouveau",
+    aspectClass: "aspect-[848/1264]",
   },
 ];
 
 export function getDeckById(id: DeckId): DeckDefinition {
   return DECKS.find((deck) => deck.id === id) ?? DECKS[0];
+}
+
+export function getDeckAspectClass(deckId: DeckId): string {
+  return getDeckById(deckId).aspectClass;
 }
 
 export function getCardImagePath(deckId: DeckId, slug: string): string | null {

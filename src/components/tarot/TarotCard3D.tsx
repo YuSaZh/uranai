@@ -28,12 +28,27 @@ export interface TarotCard3DProps {
   className?: string;
 }
 
-const SIZE_CLASSES: Record<NonNullable<TarotCard3DProps["size"]>, string> = {
+const CLASSIC_SIZE_CLASSES: Record<
+  NonNullable<TarotCard3DProps["size"]>,
+  string
+> = {
   xs: "w-[72px] h-[124px]",
   sm: "w-[104px] h-[178px]",
   md: "w-[144px] h-[246px]",
   lg: "w-[188px] h-[322px]",
   hero: "w-[236px] h-[404px] sm:w-[264px] sm:h-[452px]",
+};
+
+// Matches native 848x1264 (~0.6709) Mucha Art Nouveau card proportions with zero horizontal crop
+const ART_NOUVEAU_SIZE_CLASSES: Record<
+  NonNullable<TarotCard3DProps["size"]>,
+  string
+> = {
+  xs: "w-[82px] h-[122px]",
+  sm: "w-[116px] h-[173px]",
+  md: "w-[162px] h-[241px]",
+  lg: "w-[212px] h-[316px]",
+  hero: "w-[264px] h-[394px] sm:w-[296px] sm:h-[441px]",
 };
 
 const RADIUS_CLASSES: Record<NonNullable<TarotCard3DProps["size"]>, string> = {
@@ -128,7 +143,10 @@ export function TarotCard3D({
     gyroEnabled,
   });
 
-  const sizeClass = SIZE_CLASSES[size];
+  const isArtNouveau = deck.frameStyle === "art-nouveau";
+  const sizeClass = isArtNouveau
+    ? ART_NOUVEAU_SIZE_CLASSES[size]
+    : CLASSIC_SIZE_CLASSES[size];
   const radiusClass = RADIUS_CLASSES[size];
   const cardEdgeColor = theme.cardEdgeColor || "#c9a24b";
   const accentColor = theme.cssVars["--accent"] || "#d4af37";
@@ -155,7 +173,6 @@ export function TarotCard3D({
   const activeSheenOpacity = isFlipping ? 0.52 : isInteracting ? 0.42 : gyroEnabled ? 0.24 : 0.08;
   const activeSpotlightOpacity = isFlipping ? 0.46 : isInteracting ? 0.52 : gyroEnabled ? 0.26 : 0.1;
 
-  const isArtNouveau = deck.frameStyle === "art-nouveau";
   const showMuchaFallback = deckId === "mucha-hamster" && (!imagePath || imgError);
   const showClassicFallback = deckId !== "mucha-hamster" && (!imagePath || imgError);
 
@@ -379,18 +396,22 @@ export function TarotCard3D({
               {/* Deck-specific ornate gilded hairline inner bezel + micro bevel */}
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-[3px] ${radiusClass}`}
+                className={`pointer-events-none absolute ${
+                  isArtNouveau && !showMuchaFallback
+                    ? "inset-[1px]"
+                    : "inset-[3px]"
+                } ${radiusClass}`}
                 style={{
                   border: isArtNouveau
-                    ? "1px solid rgba(196,154,72,0.58)"
+                    ? "1px solid rgba(196,154,72,0.42)"
                     : "1px solid rgba(212,175,55,0.48)",
                   boxShadow:
-                    "inset 0 1px 0 rgba(255,255,255,0.28), inset 0 0 10px rgba(0,0,0,0.22)",
+                    "inset 0 1px 0 rgba(255,255,255,0.24), inset 0 0 8px rgba(0,0,0,0.18)",
                 }}
               />
 
-              {/* Subtle corner gilded accents for larger cards */}
-              {size !== "xs" ? (
+              {/* Subtle corner gilded accents for classic cards (Art Nouveau deck already carries hand-drawn floral corners) */}
+              {size !== "xs" && !isArtNouveau ? (
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-[6px] opacity-65"

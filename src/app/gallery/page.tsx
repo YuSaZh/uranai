@@ -250,7 +250,9 @@ export default function GalleryPage() {
                 className="group relative flex flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-glass)] p-2 text-left backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:border-[var(--border-accent)] hover:shadow-[0_14px_34px_rgba(0,0,0,0.35)] active:scale-[0.98]"
               >
                 {/* Fluid 7:12 Gilded Card Frame */}
-                <div className="relative aspect-[7/12] w-full overflow-hidden rounded-xl border border-[var(--border-accent)] bg-[#0f0d16] shadow-inner">
+                <div
+                  className={`relative ${deck.aspectClass} w-full overflow-hidden rounded-xl border border-[var(--border-accent)] bg-[#0f0d16] shadow-inner`}
+                >
                   {imagePath ? (
                     <img
                       src={imagePath}
@@ -342,7 +344,9 @@ export default function GalleryPage() {
             onClick={(e) => e.stopPropagation()}
             className="uranai-glass-strong flex max-w-xs flex-col items-center rounded-3xl p-5 text-center"
           >
-            <div className="aspect-[7/12] w-56 overflow-hidden rounded-2xl border border-[var(--accent)] shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+            <div
+              className={`${deck.aspectClass} w-64 overflow-hidden rounded-2xl border border-[var(--accent)] shadow-[0_20px_50px_rgba(0,0,0,0.6)]`}
+            >
               <img
                 src={deckBackImage}
                 alt="穆夏仓鼠塔罗专属牌背"

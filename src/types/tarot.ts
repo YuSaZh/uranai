@@ -106,6 +106,7 @@ export interface DeckDefinition {
   availableSlugs?: string[];
   badge: string;
   frameStyle: "classic-gold" | "art-nouveau";
+  aspectClass: string;
 }
 
 export interface DrawnCard {

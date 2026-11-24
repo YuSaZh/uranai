@@ -402,7 +402,7 @@ export default function SettingsPage() {
                     {previewUrls.map((url, idx) => (
                       <div
                         key={url}
-                        className="relative h-[86px] w-[52px] overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/30 shadow-lg transition-transform duration-300 group-hover:-translate-y-1"
+                        className={`relative h-[86px] ${item.aspectClass} overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/30 shadow-lg transition-transform duration-300 group-hover:-translate-y-1`}
                         style={{
                           marginLeft: idx === 0 ? 0 : -16,
                           transform: `rotate(${(idx - 1) * 7}deg)`,
@@ -418,7 +418,7 @@ export default function SettingsPage() {
                     ))}
                     {item.backImage && (
                       <div
-                        className="relative h-[86px] w-[52px] overflow-hidden rounded-lg border border-[var(--accent)] bg-black/40 shadow-lg"
+                        className={`relative h-[86px] ${item.aspectClass} overflow-hidden rounded-lg border border-[var(--accent)] bg-black/40 shadow-lg`}
                         style={{
                           marginLeft: -16,
                           transform: "rotate(12deg)",

@@ -21,7 +21,7 @@ import { useUranai } from "@/context/UranaiProvider";
 import { getCardById } from "@/data/tarot-cards";
 import { getCategoryById, getSpreadById } from "@/data/spreads";
 import { getThemeById } from "@/data/themes";
-import { getCardImagePath } from "@/data/decks";
+import { getCardImagePath, getDeckAspectClass } from "@/data/decks";
 import {
   exportReadingsToJson,
   getLocalDateKey,
@@ -439,7 +439,9 @@ export default function HistoryPage() {
                           }}
                           className="group flex shrink-0 items-center gap-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 p-1.5 pr-3 text-left transition hover:border-[var(--border-accent)] active:scale-95"
                         >
-                          <div className="relative h-14 w-9 shrink-0 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/35">
+                          <div
+                            className={`relative h-14 ${getDeckAspectClass(record.deckId)} shrink-0 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/35`}
+                          >
                             {imgUrl ? (
                               <img
                                 src={imgUrl}

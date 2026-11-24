@@ -619,11 +619,21 @@ export function ShuffleAndDrawRitual({
               {/* Subtle inlaid deck shadow pad */}
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute h-[238px] w-[142px] translate-y-4 rounded-[14px] bg-black/55 blur-xl sm:h-[268px] sm:w-[160px]"
+                className={`pointer-events-none absolute translate-y-4 rounded-[14px] bg-black/55 blur-xl ${
+                  deckId === "mucha-hamster"
+                    ? "h-[234px] w-[160px] sm:h-[266px] sm:w-[182px]"
+                    : "h-[238px] w-[142px] sm:h-[268px] sm:w-[160px]"
+                }`}
               />
 
               {/* 9-Layer Stacked Physical 350gsm Cards */}
-              <div className="relative h-[232px] w-[136px] sm:h-[266px] sm:w-[156px]">
+              <div
+                className={`relative ${
+                  deckId === "mucha-hamster"
+                    ? "h-[230px] w-[154px] sm:h-[262px] sm:w-[176px]"
+                    : "h-[232px] w-[136px] sm:h-[266px] sm:w-[156px]"
+                }`}
+              >
                 {STACK_LAYERS.map((layerIdx) => {
                   const isUpperHalf = layerIdx >= 4;
                   const isEven = layerIdx % 2 === 0;
@@ -805,7 +815,13 @@ export function ShuffleAndDrawRitual({
                     >
                       <div
                         className={`relative flex items-center justify-center overflow-hidden rounded-[6px] transition-all duration-300 ${
-                          isCompactSlots ? "h-[54px] w-[32px]" : "h-[68px] w-[40px]"
+                          deckId === "mucha-hamster"
+                            ? isCompactSlots
+                              ? "h-[54px] w-[36px]"
+                              : "h-[68px] w-[46px]"
+                            : isCompactSlots
+                              ? "h-[54px] w-[32px]"
+                              : "h-[68px] w-[40px]"
                         }`}
                         style={{
                           border: filled
@@ -901,7 +917,11 @@ export function ShuffleAndDrawRitual({
                     animate={{ opacity: 0, y: -175, scale: 0.42, rotate: -6 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                    className="pointer-events-none absolute left-1/2 top-1/2 z-[60] -ml-[46px] -mt-[79px] h-[158px] w-[92px] overflow-hidden rounded-[9px]"
+                    className={`pointer-events-none absolute left-1/2 top-1/2 z-[60] overflow-hidden rounded-[9px] ${
+                      deckId === "mucha-hamster"
+                        ? "-ml-[52px] -mt-[78px] h-[155px] w-[104px]"
+                        : "-ml-[46px] -mt-[79px] h-[158px] w-[92px]"
+                    }`}
                     style={{
                       border: `1.4px solid ${cardEdgeColor}`,
                       boxShadow: `0 0 28px ${accentColor}99`,
@@ -974,7 +994,11 @@ export function ShuffleAndDrawRitual({
                             drawCardAtIndex(deckPos);
                           }
                         }}
-                        className="absolute h-[158px] w-[92px] overflow-hidden rounded-[9px] outline-none sm:h-[185px] sm:w-[108px]"
+                        className={`absolute overflow-hidden rounded-[9px] outline-none ${
+                          deckId === "mucha-hamster"
+                            ? "h-[155px] w-[104px] sm:h-[182px] sm:w-[122px]"
+                            : "h-[158px] w-[92px] sm:h-[185px] sm:w-[108px]"
+                        }`}
                         style={{
                           transform: `translate3d(${translateX}px, ${translateY}px, 0) rotate(${angle}deg) scale(${scale})`,
                           zIndex,

@@ -306,7 +306,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="relative h-20 w-12 shrink-0 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/30 shadow-md">
+                          <div
+                            className={`relative h-20 ${item.aspectClass} shrink-0 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black/30 shadow-md`}
+                          >
                             <img
                               src={previewImg}
                               alt={item.nameZh}
