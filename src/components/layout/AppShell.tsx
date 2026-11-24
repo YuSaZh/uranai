@@ -13,6 +13,7 @@ import {
   Layers,
   Palette,
   Tablet,
+  Wand2,
   Check,
   X,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { useUranai } from "@/context/UranaiProvider";
 import { THEMES } from "@/data/themes";
 import { DECKS, getCardImagePath } from "@/data/decks";
 import { ClothStage } from "@/components/tarot/ClothStage";
+import { ClothDetailControls } from "@/components/settings/ClothDetailControls";
 import { soundEngine } from "@/lib/sound";
 
 interface NavItem {
@@ -40,8 +42,10 @@ type QuickSheetMode = "cloth" | "deck" | null;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { theme, deck, prefs, setThemeId, setDeckId } = useUranai();
+  const { theme, deck, prefs, setThemeId, setDeckId, updateClothDetail } =
+    useUranai();
   const [sheet, setSheet] = useState<QuickSheetMode>(null);
+  const [clothTab, setClothTab] = useState<"theme" | "detail">("theme");
 
   const isTableMode = pathname === "/table";
 
@@ -79,7 +83,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     >
       {/* Persistent full-bleed reading cloth stage */}
-      <ClothStage theme={theme} />
+      <ClothStage
+        theme={theme}
+        detail={prefs.clothDetail}
+        gyroEnabled={prefs.gyroEnabled}
+      />
 
       {isTableMode ? (
         <div className="relative h-[100dvh] w-[100dvw] overflow-hidden">
@@ -230,7 +238,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => setSheet(null)}
-              className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+              className={`absolute inset-0 transition-all duration-300 ${
+                sheet === "cloth" && clothTab === "detail"
+                  ? "bg-black/20 backdrop-blur-[1px]"
+                  : "bg-black/55 backdrop-blur-sm"
+              }`}
             />
 
             <motion.div
@@ -238,12 +250,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 32, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 340, damping: 30 }}
-              className="uranai-glass-strong relative z-10 w-full max-w-lg rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-3xl sm:p-6"
+              className={`uranai-glass-strong relative z-10 flex max-h-[84dvh] w-full flex-col rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-3xl sm:p-6 ${
+                sheet === "cloth" && clothTab === "detail"
+                  ? "max-w-xl"
+                  : "max-w-lg"
+              }`}
             >
               {/* Drag handle indicator on mobile */}
-              <div className="mx-auto mb-3.5 h-1 w-10 rounded-full bg-[var(--border-accent)] opacity-60 sm:hidden" />
+              <div className="mx-auto mb-3.5 h-1 w-10 shrink-0 rounded-full bg-[var(--border-accent)] opacity-60 sm:hidden" />
 
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex shrink-0 items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
                     {sheet === "cloth" ? (
@@ -254,11 +270,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </span>
                   <div>
                     <h2 className="font-display text-base font-semibold tracking-wide text-[var(--text-primary)]">
-                      {sheet === "cloth" ? "更换占卜桌布" : "切换塔罗卡组"}
+                      {sheet === "cloth" ? "占卜桌布与拟真细节" : "切换塔罗卡组"}
                     </h2>
                     <p className="text-xs text-[var(--text-muted)]">
                       {sheet === "cloth"
-                        ? "实时切换织物氛围、星尘光影与殿堂色调"
+                        ? "实时调节丝绒织纹、褶皱垂坠、刺绣图腾与烛光氛围"
                         : "自由穿梭于古典韦特与新艺术原创牌组之间"}
                     </p>
                   </div>
@@ -273,62 +289,109 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               </div>
 
+              {sheet === "cloth" && (
+                <div className="mb-3.5 grid shrink-0 grid-cols-2 gap-1.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playHoverTick(prefs.soundEnabled);
+                      setClothTab("theme");
+                    }}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium transition ${
+                      clothTab === "theme"
+                        ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm"
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Palette className="h-3.5 w-3.5" />
+                    <span>桌布配色</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playHoverTick(prefs.soundEnabled);
+                      setClothTab("detail");
+                    }}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium transition ${
+                      clothTab === "detail"
+                        ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm"
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                    <span>拟真材质与细节</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
               {sheet === "cloth" ? (
-                <div className="space-y-2.5">
-                  {THEMES.map((preset) => {
-                    const isSelected = preset.id === theme.id;
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playHoverTick(prefs.soundEnabled);
-                          setThemeId(preset.id);
-                        }}
-                        className={`flex w-full items-center gap-3.5 rounded-2xl border p-3 text-left transition active:scale-[0.99] ${
-                          isSelected
-                            ? "border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_24px_var(--cloth-glow)]"
-                            : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 hover:border-[var(--border-accent)]"
-                        }`}
-                      >
-                        {/* Swatch medallion */}
-                        <div className="flex shrink-0 items-center -space-x-1.5">
-                          {preset.swatches.slice(0, 3).map((hex, idx) => (
-                            <span
-                              key={idx}
-                              className="h-7 w-7 rounded-full border border-white/25 shadow-md"
-                              style={{ backgroundColor: hex }}
-                            />
-                          ))}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-display text-sm font-semibold text-[var(--text-primary)]">
-                              {preset.nameZh}
-                            </span>
-                            <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
-                              {preset.clothNameZh}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 line-clamp-1 text-xs text-[var(--text-secondary)]">
-                            {preset.tagline}
-                          </p>
-                        </div>
-
-                        <div
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                clothTab === "theme" ? (
+                  <div className="space-y-2.5">
+                    {THEMES.map((preset) => {
+                      const isSelected = preset.id === theme.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playHoverTick(prefs.soundEnabled);
+                            setThemeId(preset.id);
+                          }}
+                          className={`flex w-full items-center gap-3.5 rounded-2xl border p-3 text-left transition active:scale-[0.99] ${
                             isSelected
-                              ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
-                              : "border-[var(--border-subtle)]"
+                              ? "border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_24px_var(--cloth-glow)]"
+                              : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 hover:border-[var(--border-accent)]"
                           }`}
                         >
-                          {isSelected && <Check className="h-3.5 w-3.5" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                          {/* Swatch medallion */}
+                          <div className="flex shrink-0 items-center -space-x-1.5">
+                            {preset.swatches.slice(0, 3).map((hex, idx) => (
+                              <span
+                                key={idx}
+                                className="h-7 w-7 rounded-full border border-white/25 shadow-md"
+                                style={{ backgroundColor: hex }}
+                              />
+                            ))}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-display text-sm font-semibold text-[var(--text-primary)]">
+                                {preset.nameZh}
+                              </span>
+                              <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
+                                {preset.clothNameZh}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 line-clamp-1 text-xs text-[var(--text-secondary)]">
+                              {preset.tagline}
+                            </p>
+                          </div>
+
+                          <div
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]"
+                                : "border-[var(--border-subtle)]"
+                            }`}
+                          >
+                            {isSelected && <Check className="h-3.5 w-3.5" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <ClothDetailControls
+                    theme={theme}
+                    detail={prefs.clothDetail}
+                    soundEnabled={prefs.soundEnabled}
+                    compact
+                    onChange={updateClothDetail}
+                    onApplyPreset={(settings) => updateClothDetail(settings)}
+                  />
+                )
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {DECKS.map((item) => {
@@ -387,6 +450,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   })}
                 </div>
               )}
+              </div>
             </motion.div>
           </div>
         )}

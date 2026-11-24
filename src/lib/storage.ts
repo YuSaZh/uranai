@@ -1,5 +1,9 @@
 import type {
   AiConfig,
+  ClothDetailSettings,
+  ClothLightingId,
+  ClothMaterialId,
+  ClothMotifId,
   DeckId,
   DrawnCard,
   ReadingCategoryId,
@@ -11,6 +15,12 @@ import type {
 import { DEFAULT_THEME_ID, THEMES } from "@/data/themes";
 import { DEFAULT_DECK_ID, DECKS } from "@/data/decks";
 import { READING_CATEGORIES, SPREADS } from "@/data/spreads";
+import {
+  CLOTH_LIGHTINGS,
+  CLOTH_MATERIALS,
+  CLOTH_MOTIFS,
+  DEFAULT_CLOTH_DETAIL,
+} from "@/lib/cloth-textures";
 import { getSupabaseClient } from "@/lib/supabase";
 
 export const STORAGE_KEYS = {
@@ -26,6 +36,7 @@ export const DEFAULT_PREFS: UserPreferences = {
   hapticsEnabled: true,
   gyroEnabled: true,
   allowReversed: true,
+  clothDetail: DEFAULT_CLOTH_DETAIL,
 };
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
@@ -39,6 +50,57 @@ const VALID_THEME_IDS = new Set<string>(THEMES.map((t) => t.id));
 const VALID_DECK_IDS = new Set<string>(DECKS.map((d) => d.id));
 const VALID_CATEGORY_IDS = new Set<string>(READING_CATEGORIES.map((c) => c.id));
 const VALID_SPREAD_IDS = new Set<string>(SPREADS.map((s) => s.id));
+const VALID_CLOTH_MATERIALS = new Set<string>(CLOTH_MATERIALS.map((m) => m.id));
+const VALID_CLOTH_MOTIFS = new Set<string>(CLOTH_MOTIFS.map((m) => m.id));
+const VALID_CLOTH_LIGHTINGS = new Set<string>(CLOTH_LIGHTINGS.map((l) => l.id));
+
+function clampPct(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+export function sanitizeClothDetail(value: unknown): ClothDetailSettings {
+  if (!value || typeof value !== "object") {
+    return { ...DEFAULT_CLOTH_DETAIL };
+  }
+  const raw = value as Partial<ClothDetailSettings>;
+  return {
+    material:
+      typeof raw.material === "string" && VALID_CLOTH_MATERIALS.has(raw.material)
+        ? (raw.material as ClothMaterialId)
+        : DEFAULT_CLOTH_DETAIL.material,
+    textureIntensity: clampPct(
+      raw.textureIntensity,
+      DEFAULT_CLOTH_DETAIL.textureIntensity
+    ),
+    foldDepth: clampPct(raw.foldDepth, DEFAULT_CLOTH_DETAIL.foldDepth),
+    motif:
+      typeof raw.motif === "string" && VALID_CLOTH_MOTIFS.has(raw.motif)
+        ? (raw.motif as ClothMotifId)
+        : DEFAULT_CLOTH_DETAIL.motif,
+    motifOpacity: clampPct(raw.motifOpacity, DEFAULT_CLOTH_DETAIL.motifOpacity),
+    lighting:
+      typeof raw.lighting === "string" && VALID_CLOTH_LIGHTINGS.has(raw.lighting)
+        ? (raw.lighting as ClothLightingId)
+        : DEFAULT_CLOTH_DETAIL.lighting,
+    vignetteStrength: clampPct(
+      raw.vignetteStrength,
+      DEFAULT_CLOTH_DETAIL.vignetteStrength
+    ),
+    goldTrim:
+      typeof raw.goldTrim === "boolean"
+        ? raw.goldTrim
+        : DEFAULT_CLOTH_DETAIL.goldTrim,
+    interactiveSheen:
+      typeof raw.interactiveSheen === "boolean"
+        ? raw.interactiveSheen
+        : DEFAULT_CLOTH_DETAIL.interactiveSheen,
+    particleDensity: clampPct(
+      raw.particleDensity,
+      DEFAULT_CLOTH_DETAIL.particleDensity
+    ),
+  };
+}
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -100,6 +162,7 @@ export function loadLocalPrefs(): UserPreferences {
         typeof parsed.allowReversed === "boolean"
           ? parsed.allowReversed
           : DEFAULT_PREFS.allowReversed,
+      clothDetail: sanitizeClothDetail(parsed.clothDetail),
     };
   } catch {
     return DEFAULT_PREFS;
@@ -342,6 +405,7 @@ interface CloudPrefsRow {
   haptics_enabled: boolean;
   gyro_enabled: boolean;
   allow_reversed: boolean;
+  cloth_detail?: unknown;
   updated_at: string;
 }
 
@@ -500,6 +564,9 @@ export async function syncFromCloud(
       hapticsEnabled: Boolean(cloudPrefsRow.haptics_enabled),
       gyroEnabled: Boolean(cloudPrefsRow.gyro_enabled),
       allowReversed: Boolean(cloudPrefsRow.allow_reversed),
+      clothDetail: sanitizeClothDetail(
+        cloudPrefsRow.cloth_detail ?? localPrefs.clothDetail
+      ),
     };
   } else {
     await pushPrefsToCloud(userId, localPrefs);

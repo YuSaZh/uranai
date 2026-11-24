@@ -13,6 +13,7 @@ import React, {
 import type { User } from "@supabase/supabase-js";
 import type {
   AiConfig,
+  ClothDetailSettings,
   DeckDefinition,
   DeckId,
   ReadingRecord,
@@ -63,6 +64,7 @@ export interface UranaiContextValue {
   setThemeId: (themeId: ThemeId) => void;
   setDeckId: (deckId: DeckId) => void;
   updatePrefs: (patch: Partial<UserPreferences>) => void;
+  updateClothDetail: (patch: Partial<ClothDetailSettings>) => void;
   setAiConfig: (next: AiConfig) => void;
   addReading: (record: ReadingRecord) => void;
   updateReading: (id: string, patch: Partial<ReadingRecord>) => void;
@@ -222,6 +224,24 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
+
+  const updateClothDetail = useCallback(
+    (patch: Partial<ClothDetailSettings>) => {
+      setPrefs((prev) => {
+        const next: UserPreferences = {
+          ...prev,
+          clothDetail: {
+            ...prev.clothDetail,
+            ...patch,
+          },
+        };
+        prefsRef.current = next;
+        saveLocalPrefs(next);
+        return next;
+      });
+    },
+    []
+  );
 
   const setThemeId = useCallback(
     (themeId: ThemeId) => {
@@ -426,6 +446,7 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
       setThemeId,
       setDeckId,
       updatePrefs,
+      updateClothDetail,
       setAiConfig,
       addReading,
       updateReading,
@@ -451,6 +472,7 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
       setThemeId,
       setDeckId,
       updatePrefs,
+      updateClothDetail,
       setAiConfig,
       addReading,
       updateReading,

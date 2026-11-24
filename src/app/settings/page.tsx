@@ -29,6 +29,7 @@ import { useUranai } from "@/context/UranaiProvider";
 import { THEMES } from "@/data/themes";
 import { DECKS, getCardImagePath } from "@/data/decks";
 import { soundEngine } from "@/lib/sound";
+import { ClothDetailControls } from "@/components/settings/ClothDetailControls";
 import {
   getGyroDiagnostics,
   requestGyroPermission,
@@ -134,6 +135,7 @@ export default function SettingsPage() {
     setThemeId,
     setDeckId,
     updatePrefs,
+    updateClothDetail,
     setAiConfig,
     signIn,
     signUp,
@@ -397,6 +399,28 @@ export default function SettingsPage() {
               </button>
             );
           })}
+        </div>
+
+        {/* Hyper-Realistic Reading Cloth Texture & Lighting Details */}
+        <div className="mt-6 border-t border-[var(--border-subtle)] pt-5">
+          <div className="mb-3.5 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-wide text-[var(--text-primary)]">
+                桌布拟真材质与光影精调
+              </h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                自由组合丝绒 / 亚麻 / 提花锦缎 / 麂皮 / 织金星纱肌理、立体褶皱、金线刺绣与烛光氛围，全站及虚拟桌面实时生效
+              </p>
+            </div>
+          </div>
+
+          <ClothDetailControls
+            theme={theme}
+            detail={prefs.clothDetail}
+            soundEnabled={prefs.soundEnabled}
+            onChange={updateClothDetail}
+            onApplyPreset={(settings) => updateClothDetail(settings)}
+          />
         </div>
       </section>
 

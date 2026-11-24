@@ -10,8 +10,11 @@ import React, {
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   FlipHorizontal2,
@@ -30,6 +33,7 @@ import {
   Sparkles,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
 import type {
   DeckId,
@@ -109,12 +113,6 @@ type DeckAnimState = "idle" | "riffle" | "cut";
 const WASH_CARD_COUNT = 34;
 const RIBBON_MAX_CARDS = 32;
 const STACK_VISUAL_LAYERS = Array.from({ length: 11 }, (_, i) => i);
-
-const CLOTH_WEAVE_URI =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)' opacity='0.52'/%3E%3C/svg%3E\")";
-
-const COMPASS_TICKS = Array.from({ length: 36 }, (_, i) => i * 10);
-const COMPASS_SPOKES = Array.from({ length: 12 }, (_, i) => i * 30);
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -250,9 +248,6 @@ export function VirtualTableCanvas({
   const accentColor = theme.cssVars["--accent"] ?? "#d4af37";
   const accentStrong = theme.cssVars["--accent-strong"] ?? "#f0d27a";
   const cardEdgeColor = theme.cardEdgeColor ?? "#c9a24b";
-  const clothGradient =
-    theme.cssVars["--cloth-gradient"] ??
-    "radial-gradient(ellipse at 50% 24%, #1f1a36 0%, #110f1d 52%, #07070c 100%)";
   const clothGlow = theme.cssVars["--cloth-glow"] ?? "rgba(212,175,55,0.16)";
 
   // Viewport bounds measured via ResizeObserver
@@ -282,6 +277,9 @@ export function VirtualTableCanvas({
 
   // Placed card interaction states
   const [selectedCardUid, setSelectedCardUid] = useState<string | null>(null);
+  const [floatReadingTab, setFloatReadingTab] = useState<
+    "general" | "love" | "career" | "wealth" | "advice"
+  >("general");
   const [draggingCardUid, setDraggingCardUid] = useState<string | null>(null);
   const [dragHoverSlotIdx, setDragHoverSlotIdx] = useState<number | null>(null);
   const [isGatheringWash, setIsGatheringWash] = useState<boolean>(false);
@@ -1657,9 +1655,10 @@ export function VirtualTableCanvas({
 
       // Tap interaction (<= 8px)
       if (!placed.revealed) {
-        // Flip face-down card right on the cloth
+        // Flip face-down card right on the cloth and immediately focus it for bottom-right reading popup
         triggerHaptic(16);
-        setSelectedCardUid(null);
+        setSelectedCardUid(placed.uid);
+        setFloatReadingTab("general");
         onPlacedCardsChange((prev) =>
           prev.map((c) => (c.uid === placed.uid ? { ...c, revealed: true } : c))
         );
@@ -1710,7 +1709,11 @@ export function VirtualTableCanvas({
           prev.map((c) => (c.uid === uid ? { ...c, revealed: true } : c))
         );
         if (order === unrevealedUids.length - 1) {
-          scheduleTimer(() => soundEngine.playChime(soundEnabled), 360);
+          scheduleTimer(() => {
+            soundEngine.playChime(soundEnabled);
+            setSelectedCardUid(unrevealedUids[0] ?? null);
+            setFloatReadingTab("general");
+          }, 360);
         }
       }, order * 155);
     });
@@ -1855,6 +1858,35 @@ export function VirtualTableCanvas({
     () => (selectedPlacedCard ? getCardById(selectedPlacedCard.cardId) ?? null : null),
     [selectedPlacedCard]
   );
+  const revealedOrderedCards = useMemo(
+    () =>
+      placedCards
+        .filter((c) => c.revealed)
+        .sort((a, b) => a.slotIndex - b.slotIndex),
+    [placedCards]
+  );
+  const selectedRevealedIdx = useMemo(() => {
+    if (!selectedPlacedCard) return -1;
+    return revealedOrderedCards.findIndex((c) => c.uid === selectedPlacedCard.uid);
+  }, [revealedOrderedCards, selectedPlacedCard]);
+  const selectedSlotMeta = useMemo(() => {
+    if (!selectedPlacedCard || !activeSpread) return null;
+    return activeSpread.slots[selectedPlacedCard.slotIndex] ?? null;
+  }, [activeSpread, selectedPlacedCard]);
+
+  const handleCycleSelectedCard = useCallback(
+    (delta: -1 | 1) => {
+      if (revealedOrderedCards.length <= 1 || selectedRevealedIdx < 0) return;
+      const nextIdx =
+        (selectedRevealedIdx + delta + revealedOrderedCards.length) %
+        revealedOrderedCards.length;
+      const nextCard = revealedOrderedCards[nextIdx];
+      if (!nextCard) return;
+      soundEngine.playHoverTick(soundEnabled);
+      setSelectedCardUid(nextCard.uid);
+    },
+    [revealedOrderedCards, selectedRevealedIdx, soundEnabled]
+  );
 
   // Compute clamped position for floating mini action pill on selected card
   const selectedActionPos = useMemo(() => {
@@ -1896,222 +1928,10 @@ export function VirtualTableCanvas({
       }}
     >
       {/* =====================================================================
-          LAYER 0: Museum-Grade Velvet Altar Cloth, Candlelight & Gilded Frame
+          LAYER 0: Unified Photorealistic ClothStage renders persistently behind
+          this transparent canvas (fabric weave, folds, embroidery, gold hem,
+          candlelight, grazing sheen, particles & vignette).
          ===================================================================== */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
-      >
-        {/* Base Reading Cloth Gradient */}
-        <div
-          className="absolute inset-0 transition-all duration-700"
-          style={{ background: clothGradient }}
-        />
-
-        {/* Woven Velvet / Linen Micro-Grain */}
-        <div
-          className="absolute inset-0 transition-opacity duration-700"
-          style={{
-            backgroundImage: CLOTH_WEAVE_URI,
-            opacity: theme.isLight ? 0.14 : 0.095,
-            mixBlendMode: theme.isLight ? "multiply" : "soft-light",
-          }}
-        />
-
-        {/* Warm Central Candlelight Pool */}
-        <div
-          className="absolute inset-0 transition-all duration-700"
-          style={{
-            background: `radial-gradient(ellipse 68% 58% at 50% 44%, ${clothGlow} 0%, transparent 74%)`,
-          }}
-        />
-
-        {/* Subtle Central Etched Sacred Compass Ring */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <svg
-            viewBox="0 0 800 800"
-            className="animate-[spin_220s_linear_infinite]"
-            style={{
-              width: Math.min(canvasSize.width, canvasSize.height) * 0.72,
-              height: Math.min(canvasSize.width, canvasSize.height) * 0.72,
-              color: accentColor,
-              opacity: theme.isLight ? 0.14 : 0.095,
-            }}
-          >
-            <circle
-              cx="400"
-              cy="400"
-              r="364"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-            />
-            <circle
-              cx="400"
-              cy="400"
-              r="348"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.7"
-              strokeDasharray="4 6"
-            />
-            <circle
-              cx="400"
-              cy="400"
-              r="268"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.95"
-            />
-            <circle
-              cx="400"
-              cy="400"
-              r="146"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.8"
-              strokeDasharray="2.5 5"
-            />
-            <circle
-              cx="400"
-              cy="400"
-              r="54"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.85"
-            />
-            {COMPASS_TICKS.map((deg) => (
-              <line
-                key={deg}
-                x1="400"
-                y1="36"
-                x2="400"
-                y2={deg % 30 === 0 ? "56" : "46"}
-                stroke="currentColor"
-                strokeWidth={deg % 30 === 0 ? "1.1" : "0.6"}
-                transform={`rotate(${deg} 400 400)`}
-              />
-            ))}
-            {COMPASS_SPOKES.map((deg) => (
-              <g key={deg} transform={`rotate(${deg} 400 400)`}>
-                <line
-                  x1="400"
-                  y1="146"
-                  x2="400"
-                  y2="268"
-                  stroke="currentColor"
-                  strokeWidth="0.6"
-                  strokeOpacity="0.72"
-                />
-                <circle cx="400" cy="112" r="2.6" fill="currentColor" />
-              </g>
-            ))}
-            <rect
-              x="212"
-              y="212"
-              width="376"
-              height="376"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.75"
-            />
-            <rect
-              x="212"
-              y="212"
-              width="376"
-              height="376"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.75"
-              transform="rotate(45 400 400)"
-            />
-            {[0, 90, 180, 270].map((deg) => (
-              <path
-                key={deg}
-                d="M 396 72 A 12 12 0 1 1 396 92 A 9 9 0 1 0 396 72 Z"
-                fill="currentColor"
-                transform={`rotate(${deg} 400 400)`}
-              />
-            ))}
-          </svg>
-        </div>
-
-        {/* Soft Tabletop Outer Candlelight Vignette */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: theme.isLight
-              ? "radial-gradient(ellipse at 50% 48%, transparent 50%, rgba(92,68,36,0.18) 100%)"
-              : "radial-gradient(ellipse at 50% 48%, transparent 45%, rgba(2,3,8,0.68) 100%)",
-          }}
-        />
-
-        {/* Inlaid Antique-Gold Stitched Altar Cloth Hem + 4 Corner Astrolabe Medallions */}
-        <div
-          className="absolute inset-[10px] sm:inset-[12px] rounded-[18px] sm:rounded-[22px]"
-          style={{
-            border: `1px solid ${accentColor}4d`,
-            boxShadow: `inset 0 0 0 1px ${accentColor}1c`,
-          }}
-        >
-          {/* Inner stitched antique-gold embroidery line */}
-          <div
-            className="absolute inset-[5px] rounded-[14px] sm:rounded-[17px]"
-            style={{
-              border: `1px dashed ${accentColor}40`,
-            }}
-          />
-
-          {/* 4 Symmetrical Corner SVG Astrolabe Medallions */}
-          {[
-            { pos: "top-1 left-1", rot: 0 },
-            { pos: "top-1 right-1", rot: 90 },
-            { pos: "bottom-1 right-1", rot: 180 },
-            { pos: "bottom-1 left-1", rot: 270 },
-          ].map((corner, idx) => (
-            <svg
-              key={idx}
-              viewBox="0 0 64 64"
-              className={`absolute ${corner.pos} h-10 w-10 sm:h-14 sm:w-14`}
-              style={{
-                color: accentColor,
-                opacity: theme.isLight ? 0.55 : 0.45,
-                transform: `rotate(${corner.rot}deg)`,
-              }}
-            >
-              <path
-                d="M 6 50 L 6 16 C 6 10 10 6 16 6 L 50 6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-              <path
-                d="M 10 38 A 28 28 0 0 1 38 10"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="0.85"
-              />
-              <path
-                d="M 10 28 A 18 18 0 0 1 28 10"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="0.65"
-                strokeDasharray="2 2.5"
-              />
-              <circle cx="14" cy="14" r="3.2" fill="none" stroke="currentColor" strokeWidth="0.9" />
-              <circle cx="14" cy="14" r="1.2" fill="currentColor" />
-              {/* Tiny 4-point celestial starlet */}
-              <path
-                d="M 27 21 L 28.1 25.9 L 33 27 L 28.1 28.1 L 27 33 L 25.9 28.1 L 21 27 L 25.9 25.9 Z"
-                fill="currentColor"
-                fillOpacity="0.85"
-              />
-              <circle cx="48" cy="11" r="1.2" fill="currentColor" />
-              <circle cx="11" cy="48" r="1.2" fill="currentColor" />
-            </svg>
-          ))}
-        </div>
-      </div>
 
       {/* =====================================================================
           LAYER 1 (z-10): Etched Golden Spread Slot Outlines on Cloth
@@ -2398,6 +2218,208 @@ export function VirtualTableCanvas({
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* =====================================================================
+          BOTTOM-RIGHT FLOATING BASIC INTERPRETATION POPUP FOR SELECTED CARD (z-42)
+         ===================================================================== */}
+      <AnimatePresence>
+        {selectedPlacedCard &&
+        selectedTarotCard &&
+        selectedPlacedCard.revealed &&
+        phase !== "wash" ? (
+          <motion.aside
+            key={`reading-float-${selectedPlacedCard.uid}`}
+            initial={{ opacity: 0, y: 18, scale: 0.96, rotate: querentFacing ? 180 : 0 }}
+            animate={{ opacity: 1, y: 0, scale: 1, rotate: querentFacing ? 180 : 0 }}
+            exit={{ opacity: 0, y: 14, scale: 0.96, rotate: querentFacing ? 180 : 0 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={`${selectedTarotCard.nameZh} 基础牌义浮窗`}
+            className={`uranai-glass-strong gold-shimmer-border pointer-events-auto fixed right-3 z-[42] flex w-[min(352px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-3xl shadow-[0_18px_52px_rgba(0,0,0,0.55)] sm:right-5 ${
+              phase === "ribbon"
+                ? "bottom-[max(13.2rem,calc(env(safe-area-inset-bottom)+12.4rem))]"
+                : "bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.75rem))] md:bottom-[max(1.1rem,env(safe-area-inset-bottom))]"
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] px-4 pt-3.5 pb-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-strong)]">
+                    {selectedSlotMeta
+                      ? `${selectedPlacedCard.slotIndex + 1}. ${selectedSlotMeta.labelZh}`
+                      : `第 ${selectedRevealedIdx >= 0 ? selectedRevealedIdx + 1 : 1} 张`}
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                      selectedPlacedCard.reversed
+                        ? theme.isLight
+                          ? "border-amber-600/35 bg-amber-500/15 text-amber-900"
+                          : "border-amber-400/35 bg-amber-400/15 text-amber-200"
+                        : "border-emerald-400/35 bg-emerald-400/15 text-emerald-300"
+                    }`}
+                  >
+                    {selectedPlacedCard.reversed ? "逆位" : "正位"}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {selectedTarotCard.element}
+                    {selectedTarotCard.astrology ? ` · ${selectedTarotCard.astrology}` : ""}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <h3 className="font-display truncate text-base font-semibold tracking-wide text-[var(--text-primary)]">
+                    {selectedTarotCard.romanNumeral
+                      ? `${selectedTarotCard.romanNumeral} · `
+                      : ""}
+                    {selectedTarotCard.nameZh}
+                  </h3>
+                  <span className="truncate text-[11px] text-[var(--text-muted)]">
+                    {selectedTarotCard.nameEn}
+                  </span>
+                </div>
+                {selectedSlotMeta ? (
+                  <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--text-muted)]">
+                    {selectedSlotMeta.description}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                {revealedOrderedCards.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleCycleSelectedCard(-1)}
+                      aria-label="上一张已翻牌"
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCycleSelectedCard(1)}
+                      aria-label="下一张已翻牌"
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setSelectedCardUid(null)}
+                  aria-label="关闭基础解析浮窗"
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] active:scale-95"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Keywords */}
+            <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
+              {(selectedPlacedCard.reversed
+                ? selectedTarotCard.keywordsReversed
+                : selectedTarotCard.keywordsUpright
+              ).map((kw) => (
+                <span
+                  key={kw}
+                  className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 px-2.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"
+                >
+                  {kw}
+                </span>
+              ))}
+            </div>
+
+            {/* Aspect Mini Tabs */}
+            <div className="flex items-center gap-1 px-4 pt-2.5">
+              {(
+                [
+                  { id: "general", label: "基础" },
+                  { id: "love", label: "爱情" },
+                  { id: "career", label: "事业" },
+                  { id: "wealth", label: "财富" },
+                  { id: "advice", label: "指引" },
+                ] as const
+              ).map((tab) => {
+                const active = floatReadingTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playHoverTick(soundEnabled);
+                      setFloatReadingTab(tab.id);
+                    }}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                      active
+                        ? "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-sm"
+                        : "bg-[var(--bg-surface)]/65 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Scrollable Meaning Body */}
+            <div
+              className="max-h-[168px] overflow-y-auto overscroll-contain px-4 py-2.5 text-xs leading-relaxed text-[var(--text-secondary)]"
+              style={{ touchAction: "pan-y" }}
+            >
+              <p>
+                {floatReadingTab === "general"
+                  ? selectedPlacedCard.reversed
+                    ? selectedTarotCard.meaningReversed
+                    : selectedTarotCard.meaningUpright
+                  : floatReadingTab === "love"
+                    ? selectedPlacedCard.reversed
+                      ? selectedTarotCard.loveReversed
+                      : selectedTarotCard.loveUpright
+                    : floatReadingTab === "career"
+                      ? selectedPlacedCard.reversed
+                        ? selectedTarotCard.careerReversed
+                        : selectedTarotCard.careerUpright
+                      : floatReadingTab === "wealth"
+                        ? selectedPlacedCard.reversed
+                          ? selectedTarotCard.wealthReversed
+                          : selectedTarotCard.wealthUpright
+                        : selectedPlacedCard.reversed
+                          ? selectedTarotCard.adviceReversed
+                          : selectedTarotCard.adviceUpright}
+              </p>
+              {floatReadingTab === "general" || floatReadingTab === "advice" ? (
+                <p className="mt-2 border-l-2 border-[var(--border-accent)] pl-2.5 font-serif text-[11px] italic text-[var(--accent-strong)]">
+                  “{selectedTarotCard.affirmation}”
+                </p>
+              ) : null}
+            </div>
+
+            {/* Footer Quick Actions */}
+            <div className="flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 px-3.5 py-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onInspectCard(selectedTarotCard, selectedPlacedCard.reversed);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/80 px-3 py-1.5 text-[11px] font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] active:scale-95"
+              >
+                <Orbit className="h-3.5 w-3.5 text-[var(--accent)]" />
+                360° 赏析
+              </button>
+              <button
+                type="button"
+                onClick={onOpenDrawer}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)] px-3.5 py-1.5 text-[11px] font-semibold text-[var(--accent-contrast)] shadow-[0_4px_16px_var(--cloth-glow)] transition hover:brightness-110 active:scale-95"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                AI 深度综合解牌
+              </button>
+            </div>
+          </motion.aside>
         ) : null}
       </AnimatePresence>
 

@@ -56,7 +56,7 @@ html[data-light="true"] {
 
 body {
   min-height: 100dvh;
-  background-color: var(--bg-base);
+  background-color: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   overflow-x: hidden;
@@ -178,6 +178,82 @@ html[data-light="true"] .uranai-glass-strong {
 
 .animate-aura-pulse {
   animation: uranai-pulse-aura 3.6s ease-in-out infinite;
+}
+
+@keyframes uranai-candle-breath {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  28% {
+    opacity: 0.96;
+    transform: scale(1.03) translate3d(0.4%, -0.4%, 0);
+  }
+  52% {
+    opacity: 0.84;
+    transform: scale(0.99) translate3d(-0.3%, 0.3%, 0);
+  }
+  76% {
+    opacity: 1;
+    transform: scale(1.04) translate3d(0.2%, -0.2%, 0);
+  }
+}
+
+.animate-candle-breath {
+  animation: uranai-candle-breath 6.4s ease-in-out infinite;
+}
+
+/* Tactile antique-gold slider for reading cloth controls */
+.uranai-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--border-accent) 42%, var(--bg-surface));
+  outline: none;
+  cursor: pointer;
+}
+
+.uranai-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 2px solid var(--bg-base);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--accent-strong) 0%,
+    var(--accent) 75%
+  );
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-accent);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.uranai-range:active::-webkit-slider-thumb {
+  transform: scale(1.16);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.55), 0 0 0 4px var(--accent-soft);
+}
+
+.uranai-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 2px solid var(--bg-base);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--accent-strong) 0%,
+    var(--accent) 75%
+  );
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-accent);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.uranai-range::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: transparent;
 }
 
 .gold-divider {

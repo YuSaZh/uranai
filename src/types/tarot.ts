@@ -139,6 +139,39 @@ export interface AiConfig {
   model: string;
 }
 
+export type ClothMaterialId =
+  | "velvet"
+  | "linen"
+  | "silk"
+  | "suede"
+  | "constellation";
+
+export type ClothMotifId =
+  | "astrolabe"
+  | "lunar-phases"
+  | "mucha-botanical"
+  | "celtic-knot"
+  | "minimal";
+
+export type ClothLightingId =
+  | "candlelight"
+  | "moonlight"
+  | "spotlight"
+  | "ambient";
+
+export interface ClothDetailSettings {
+  material: ClothMaterialId;
+  textureIntensity: number;
+  foldDepth: number;
+  motif: ClothMotifId;
+  motifOpacity: number;
+  lighting: ClothLightingId;
+  vignetteStrength: number;
+  goldTrim: boolean;
+  interactiveSheen: boolean;
+  particleDensity: number;
+}
+
 export interface UserPreferences {
   themeId: ThemeId;
   deckId: DeckId;
@@ -146,4 +179,5 @@ export interface UserPreferences {
   hapticsEnabled: boolean;
   gyroEnabled: boolean;
   allowReversed: boolean;
+  clothDetail: ClothDetailSettings;
 }
