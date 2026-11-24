@@ -1,0 +1,392 @@
+import type {
+  ReadingCategory,
+  ReadingCategoryId,
+  SpreadDefinition,
+  SpreadId,
+} from "@/types/tarot";
+
+export const READING_CATEGORIES: ReadingCategory[] = [
+  {
+    id: "love",
+    nameZh: "情感羁绊",
+    nameEn: "Love & Bonds",
+    icon: "♡",
+    sampleQuestions: [
+      "这段关系在接下来的三个月里会走向怎样的温度？",
+      "对方此刻内心最真实却尚未说出口的想法是什么？",
+      "我在亲密关系中需要觉察和疗愈的核心课题是什么？",
+      "近期我是否会迎来值得敞开心扉的新缘分？",
+    ],
+  },
+  {
+    id: "career",
+    nameZh: "事业前程",
+    nameEn: "Career & Calling",
+    icon: "✦",
+    sampleQuestions: [
+      "当前这份工作或项目还能带给我怎样的长期成长空间？",
+      "如果我现在选择跳槽或转型，将会面对哪些机遇与考验？",
+      "近期在职场沟通与团队协作中，我最应该调整的策略是什么？",
+      "接下来半年，我该如何突破目前的职业瓶颈期？",
+    ],
+  },
+  {
+    id: "wealth",
+    nameZh: "财富丰盛",
+    nameEn: "Wealth & Flow",
+    icon: "◈",
+    sampleQuestions: [
+      "我近期的正财与偏财流动趋势如何，哪些地方需要守稳？",
+      "我正在考虑的这笔投资或消费决定是否合乎长远利益？",
+      "阻碍我打开更高收入渠道的隐性卡点是什么？",
+      "未来一个季度，我可以通过什么方式积累更稳固的资源？",
+    ],
+  },
+  {
+    id: "study",
+    nameZh: "学业进阶",
+    nameEn: "Study & Mastery",
+    icon: "❖",
+    sampleQuestions: [
+      "面对即将到来的考试或考核，我目前的准备状态如何？",
+      "怎样调整学习节奏与方法，才能让我的吸收效率大幅提升？",
+      "我在深造、进修或新技能选择上最契合天赋的方向是哪里？",
+      "是什么在分散我的专注力，该如何重新找回心流？",
+    ],
+  },
+  {
+    id: "decision",
+    nameZh: "抉择指引",
+    nameEn: "Crossroads",
+    icon: "✧",
+    sampleQuestions: [
+      "在眼前的两个方案之间，各自隐藏着怎样的真实代价与回报？",
+      "如果我顺从内心最渴望的那个选项迈出一步，会发生什么？",
+      "在这件事上，我是否忽略了某个至关重要的盲点？",
+      "现在是果断行动的时机，还是应该先按兵不动继续观察？",
+    ],
+  },
+  {
+    id: "general",
+    nameZh: "综合运势",
+    nameEn: "General Oracle",
+    icon: "☽",
+    sampleQuestions: [
+      "宇宙此刻最想提醒我留意的一件重要讯息是什么？",
+      "接下来这一个月，我整体能量的高点与需要注意的暗礁在哪里？",
+      "为了迎接下一阶段的人生篇章，我现在最该放下什么？",
+      "今日或近期有什么意想不到的好运正在悄悄靠近我？",
+    ],
+  },
+];
+
+export const SPREADS: SpreadDefinition[] = [
+  {
+    id: "single",
+    nameZh: "单牌神谕",
+    nameEn: "Single Oracle",
+    cardCount: 1,
+    difficulty: "入门",
+    summary:
+      "一针见血的焦点指引，适合日常能量校准、即时灵感启发或回答一个清晰具体的单一问题。",
+    recommendedFor: ["general", "decision", "study"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "核心启示",
+        labelEn: "Core Insight",
+        description: "直指问题核心的能量讯息与当下最值得倾听的指引。",
+        x: 50,
+        y: 50,
+      },
+    ],
+  },
+  {
+    id: "time-flow",
+    nameZh: "时间之流",
+    nameEn: "Time Flow",
+    cardCount: 3,
+    difficulty: "入门",
+    summary:
+      "经典的圣三角时间脉络，沿过去、当下、未来展开事件因果，看清局势如何演进。",
+    recommendedFor: ["general", "career", "wealth", "love"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "过去之因",
+        labelEn: "Past",
+        description: "塑造当下局面的背景脉络、过往选择与遗留影响。",
+        x: 22,
+        y: 52,
+      },
+      {
+        index: 1,
+        labelZh: "当下之境",
+        labelEn: "Present",
+        description: "你此刻所处的真实状态、核心焦点与活跃能量。",
+        x: 50,
+        y: 46,
+      },
+      {
+        index: 2,
+        labelZh: "未来之势",
+        labelEn: "Future",
+        description: "沿当前轨迹发展下去，最可能显现的趋势与结果。",
+        x: 78,
+        y: 52,
+      },
+    ],
+  },
+  {
+    id: "action-insight",
+    nameZh: "洞察与行动",
+    nameEn: "Insight & Action",
+    cardCount: 3,
+    difficulty: "入门",
+    summary:
+      "聚焦务实破局的三牌结构，从局势诊断切入，给出可落地的行动建议与预期回响。",
+    recommendedFor: ["decision", "career", "study", "wealth"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "局势本质",
+        labelEn: "Situation",
+        description: "事件表象之下的真实结构与核心症结所在。",
+        x: 22,
+        y: 50,
+      },
+      {
+        index: 1,
+        labelZh: "破局行动",
+        labelEn: "Action",
+        description: "此刻最有效、最值得采取的具体姿态与策略。",
+        x: 50,
+        y: 50,
+      },
+      {
+        index: 2,
+        labelZh: "行动回响",
+        labelEn: "Outcome",
+        description: "落实这份行动指引后，预期迎来的变化与收获。",
+        x: 78,
+        y: 50,
+      },
+    ],
+  },
+  {
+    id: "cross-five",
+    nameZh: "五芒星十字",
+    nameEn: "Five-Card Cross",
+    cardCount: 5,
+    difficulty: "进阶",
+    summary:
+      "兼具横向时间轴与纵向显隐轴的均衡牌阵，立体拆解问题的根源、阻力、助力与走向。",
+    recommendedFor: ["decision", "career", "wealth", "study"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "核心现状",
+        labelEn: "Core",
+        description: "整个局面的中心议题与当下最紧要的课题。",
+        x: 50,
+        y: 50,
+      },
+      {
+        index: 1,
+        labelZh: "过往根源",
+        labelEn: "Root",
+        description: "导致此事发生的深层起因或长期积累的因素。",
+        x: 22,
+        y: 50,
+      },
+      {
+        index: 2,
+        labelZh: "潜藏阻力",
+        labelEn: "Challenge",
+        description: "暗中牵制局势的障碍、盲点或内在消耗。",
+        x: 50,
+        y: 80,
+      },
+      {
+        index: 3,
+        labelZh: "显化助力",
+        labelEn: "Support",
+        description: "可以倚重的优势、贵人资源或有利契机。",
+        x: 50,
+        y: 20,
+      },
+      {
+        index: 4,
+        labelZh: "演进结果",
+        labelEn: "Outcome",
+        description: "综合各方力量后，事情最可能落定的方向。",
+        x: 78,
+        y: 50,
+      },
+    ],
+  },
+  {
+    id: "love-mirror",
+    nameZh: "恋人之镜",
+    nameEn: "Mirror of Love",
+    cardCount: 6,
+    difficulty: "进阶",
+    summary:
+      "专为亲密与人际羁绊设计的镜像六牌阵，映照彼此的心意、表态、共修课题与未来走向。",
+    recommendedFor: ["love"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "你的内心",
+        labelEn: "Your Heart",
+        description: "你在这段关系里最真实的渴望、感受与脆弱。",
+        x: 24,
+        y: 34,
+      },
+      {
+        index: 1,
+        labelZh: "对方内心",
+        labelEn: "Their Heart",
+        description: "对方藏在心底的情绪、顾虑与对你的真实看法。",
+        x: 76,
+        y: 34,
+      },
+      {
+        index: 2,
+        labelZh: "你的外在",
+        labelEn: "Your Stance",
+        description: "你在互动中呈现出的行为模式与表达方式。",
+        x: 24,
+        y: 68,
+      },
+      {
+        index: 3,
+        labelZh: "对方外在",
+        labelEn: "Their Stance",
+        description: "对方展现给你的态度、行动倾向与防御姿态。",
+        x: 76,
+        y: 68,
+      },
+      {
+        index: 4,
+        labelZh: "羁绊课题",
+        labelEn: "Core Bond",
+        description: "维系或考验你们之间的核心引力与共同功课。",
+        x: 50,
+        y: 22,
+      },
+      {
+        index: 5,
+        labelZh: "关系走向",
+        labelEn: "Future Path",
+        description: "这段情感在近期自然演进的氛围与前景。",
+        x: 50,
+        y: 78,
+      },
+    ],
+  },
+  {
+    id: "celtic-cross",
+    nameZh: "凯尔特十字",
+    nameEn: "Celtic Cross",
+    cardCount: 10,
+    difficulty: "深度",
+    summary:
+      "流传最广的十牌全景深度牌阵，从内外意识、横亘阻滞到环境气候与终局走势，一次看透复杂命题。",
+    recommendedFor: ["general", "career", "love", "decision", "wealth"],
+    slots: [
+      {
+        index: 0,
+        labelZh: "当下核心",
+        labelEn: "Present",
+        description: "你此刻所处的中心处境与最直接的生命课题。",
+        x: 34,
+        y: 50,
+      },
+      {
+        index: 1,
+        labelZh: "横亘挑战",
+        labelEn: "Crossing",
+        description: "横切在核心之上的直接阻力、矛盾或关键转折点。",
+        x: 34,
+        y: 50,
+        rotation: 90,
+      },
+      {
+        index: 2,
+        labelZh: "意识目标",
+        labelEn: "Crown",
+        description: "你清醒追求的理想目标与头脑中的最佳设想。",
+        x: 34,
+        y: 18,
+      },
+      {
+        index: 3,
+        labelZh: "潜意识根基",
+        labelEn: "Foundation",
+        description: "深埋心底的驱动力、过往印记与不自觉的信念。",
+        x: 34,
+        y: 82,
+      },
+      {
+        index: 4,
+        labelZh: "近期过去",
+        labelEn: "Recent Past",
+        description: "刚刚消退却仍在释放余波的事件与阶段。",
+        x: 13,
+        y: 50,
+      },
+      {
+        index: 5,
+        labelZh: "近期未来",
+        labelEn: "Near Future",
+        description: "即将步入视野的新动向与下一阶段序幕。",
+        x: 55,
+        y: 50,
+      },
+      {
+        index: 6,
+        labelZh: "自我姿态",
+        labelEn: "Self Attitude",
+        description: "你面对此事时的内在状态、自信程度与应对方式。",
+        x: 82,
+        y: 84,
+      },
+      {
+        index: 7,
+        labelZh: "外界环境",
+        labelEn: "Environment",
+        description: "周围人事、外在氛围与不可控的客观条件。",
+        x: 82,
+        y: 61,
+      },
+      {
+        index: 8,
+        labelZh: "希望与恐惧",
+        labelEn: "Hopes & Fears",
+        description: "你暗自期盼的奇迹，或心底隐隐担忧的情景。",
+        x: 82,
+        y: 39,
+      },
+      {
+        index: 9,
+        labelZh: "最终结果",
+        labelEn: "Final Outcome",
+        description: "汇集所有明暗线索后，这段旅程最可能抵达的终点。",
+        x: 82,
+        y: 16,
+      },
+    ],
+  },
+];
+
+export function getCategoryById(id: ReadingCategoryId): ReadingCategory {
+  return (
+    READING_CATEGORIES.find((category) => category.id === id) ??
+    READING_CATEGORIES[READING_CATEGORIES.length - 1]
+  );
+}
+
+export function getSpreadById(id: SpreadId): SpreadDefinition {
+  return SPREADS.find((spread) => spread.id === id) ?? SPREADS[0];
+}

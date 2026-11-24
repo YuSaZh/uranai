@@ -8,11 +8,17 @@ dist/
 build/
 .next/
 out/
+*.tsbuildinfo
+next-env.d.ts
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+
+# Local machine deployment preferences & scripts (do not commit)
+GEMINI.md
+scripts/deploy-sub01.sh
 
 # Logs
 *.log
