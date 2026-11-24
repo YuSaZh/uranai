@@ -21,6 +21,7 @@ import {
   CLOTH_MOTIFS,
   DEFAULT_CLOTH_DETAIL,
 } from "@/lib/cloth-textures";
+import { DEFAULT_DECK_POOL, sanitizeDeckPool } from "@/lib/deck-pool";
 import { getSupabaseClient } from "@/lib/supabase";
 
 export const STORAGE_KEYS = {
@@ -37,6 +38,7 @@ export const DEFAULT_PREFS: UserPreferences = {
   gyroEnabled: true,
   allowReversed: true,
   clothDetail: DEFAULT_CLOTH_DETAIL,
+  deckPool: DEFAULT_DECK_POOL,
 };
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
@@ -163,6 +165,7 @@ export function loadLocalPrefs(): UserPreferences {
           ? parsed.allowReversed
           : DEFAULT_PREFS.allowReversed,
       clothDetail: sanitizeClothDetail(parsed.clothDetail),
+      deckPool: sanitizeDeckPool(parsed.deckPool),
     };
   } catch {
     return DEFAULT_PREFS;
@@ -406,6 +409,7 @@ interface CloudPrefsRow {
   gyro_enabled: boolean;
   allow_reversed: boolean;
   cloth_detail?: unknown;
+  deck_pool?: unknown;
   updated_at: string;
 }
 
@@ -566,6 +570,9 @@ export async function syncFromCloud(
       allowReversed: Boolean(cloudPrefsRow.allow_reversed),
       clothDetail: sanitizeClothDetail(
         cloudPrefsRow.cloth_detail ?? localPrefs.clothDetail
+      ),
+      deckPool: sanitizeDeckPool(
+        cloudPrefsRow.deck_pool ?? localPrefs.deckPool
       ),
     };
   } else {

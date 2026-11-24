@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Filter,
   FlipHorizontal2,
   FlipVertical2,
   GalleryHorizontalEnd,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 import type {
   DeckId,
+  DeckPoolConfig,
   SpreadSlot,
   TarotCard,
   ThemeId,
@@ -45,6 +47,11 @@ import { TAROT_CARDS, getCardById } from "@/data/tarot-cards";
 import { SPREADS, getSpreadById } from "@/data/spreads";
 import { getThemeById } from "@/data/themes";
 import { getDeckById } from "@/data/decks";
+import {
+  DEFAULT_DECK_POOL,
+  getDeckPoolShortLabel,
+  getPoolCardIds,
+} from "@/lib/deck-pool";
 import { soundEngine } from "@/lib/sound";
 import { CardBackArtwork } from "@/components/tarot/CardBackArtwork";
 import { TarotCard3D } from "@/components/tarot/TarotCard3D";
@@ -58,6 +65,7 @@ export interface VirtualTableCanvasProps {
   deckId: DeckId;
   themeId: ThemeId;
   spreadId: TableSpreadId;
+  deckPool?: DeckPoolConfig;
   allowReversed: boolean;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
@@ -69,6 +77,7 @@ export interface VirtualTableCanvasProps {
   onOpenDrawer: () => void;
   onOpenClothSheet: () => void;
   onOpenDeckSheet: () => void;
+  onOpenDeckPoolModal?: () => void;
   onResetTable: () => void;
   querentFacing: boolean;
   onToggleQuerentFacing: () => void;
@@ -81,6 +90,7 @@ export interface VirtualTableCanvasProps {
 
 interface WashCardBody {
   id: number;
+  cardId: string;
   x: number;
   y: number;
   vx: number;
@@ -109,10 +119,6 @@ interface RibbonDragGhost {
 }
 
 type DeckAnimState = "idle" | "riffle" | "cut";
-
-const WASH_CARD_COUNT = 34;
-const RIBBON_MAX_CARDS = 32;
-const STACK_VISUAL_LAYERS = Array.from({ length: 11 }, (_, i) => i);
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -218,6 +224,7 @@ export function VirtualTableCanvas({
   deckId,
   themeId,
   spreadId,
+  deckPool = DEFAULT_DECK_POOL,
   allowReversed,
   soundEnabled,
   hapticsEnabled,
@@ -229,6 +236,7 @@ export function VirtualTableCanvas({
   onOpenDrawer,
   onOpenClothSheet,
   onOpenDeckSheet,
+  onOpenDeckPoolModal,
   onResetTable,
   querentFacing,
   onToggleQuerentFacing,
@@ -243,6 +251,20 @@ export function VirtualTableCanvas({
   const activeSpread = useMemo(
     () => (spreadId === "free" ? null : getSpreadById(spreadId)),
     [spreadId]
+  );
+
+  // Active divination card pool driven by user's selected rule
+  const activePoolCardIds = useMemo(() => {
+    const ids = getPoolCardIds(deckPool, TAROT_CARDS);
+    return ids.length > 0 ? ids : TAROT_CARDS.map((c) => c.id);
+  }, [deckPool]);
+  const poolSignature = useMemo(
+    () => activePoolCardIds.join(","),
+    [activePoolCardIds]
+  );
+  const deckPoolShortLabel = useMemo(
+    () => getDeckPoolShortLabel(deckPool, activePoolCardIds.length),
+    [activePoolCardIds.length, deckPool]
   );
 
   const accentColor = theme.cssVars["--accent"] ?? "#d4af37";
@@ -264,10 +286,9 @@ export function VirtualTableCanvas({
   const [deckAnim, setDeckAnim] = useState<DeckAnimState>("idle");
   const [shuffleCount, setShuffleCount] = useState<number>(0);
 
-  // Shuffled 78-card deck order (deterministic initial for SSR, immediately Fisher-Yates shuffled on mount)
-  const [deckOrder, setDeckOrder] = useState<string[]>(() =>
-    TAROT_CARDS.map((c) => c.id)
-  );
+  // Shuffled active pool deck order (deterministic initial for SSR, immediately Fisher-Yates shuffled on mount)
+  const [deckOrder, setDeckOrder] = useState<string[]>(() => activePoolCardIds);
+  const [washCardIds, setWashCardIds] = useState<string[]>(() => activePoolCardIds);
 
   // Ribbon phase states
   const [spreadProgress, setSpreadProgress] = useState<number>(0);
@@ -320,10 +341,18 @@ export function VirtualTableCanvas({
     [deckOrder, usedCardIds]
   );
 
-  const ribbonCards = useMemo(
-    () => availableCardIds.slice(0, RIBBON_MAX_CARDS),
-    [availableCardIds]
-  );
+  // Full remaining active pool in the silk ribbon (no artificial 32-card cap!)
+  const ribbonCards = availableCardIds;
+
+  // Dynamic physical stack thickness reflecting true remaining card count (2..16 slices)
+  const stackVisualLayers = useMemo(() => {
+    const sliceCount = clamp(
+      Math.round(2 + (availableCardIds.length / 78) * 14),
+      availableCardIds.length === 0 ? 0 : 2,
+      16
+    );
+    return Array.from({ length: sliceCount }, (_, i) => i);
+  }, [availableCardIds.length]);
 
   const revealedCount = useMemo(
     () => placedCards.filter((c) => c.revealed).length,
@@ -358,11 +387,17 @@ export function VirtualTableCanvas({
   const ribbonCardWidth = Math.round(ribbonCardHeight * cardRatio);
 
   const washCardHeight = useMemo(() => {
+    const isLargePool = washCardIds.length > 48;
+    const minDim = Math.min(canvasSize.width, canvasSize.height);
     if (isTabletOrWide) {
-      return clamp(Math.round(Math.min(canvasSize.width, canvasSize.height) * 0.185), 126, 162);
+      return isLargePool
+        ? clamp(Math.round(minDim * 0.162), 108, 144)
+        : clamp(Math.round(minDim * 0.185), 124, 162);
     }
-    return clamp(Math.round(Math.min(canvasSize.width, canvasSize.height) * 0.21), 90, 118);
-  }, [canvasSize.height, canvasSize.width, isTabletOrWide]);
+    return isLargePool
+      ? clamp(Math.round(minDim * 0.172), 74, 100)
+      : clamp(Math.round(minDim * 0.205), 88, 118);
+  }, [canvasSize.height, canvasSize.width, isTabletOrWide, washCardIds.length]);
 
   const washCardWidth = Math.round(washCardHeight * cardRatio);
 
@@ -475,9 +510,8 @@ export function VirtualTableCanvas({
     }
   }, []);
 
-  // Client-mount initial shuffle & cleanup
+  // Client-mount cleanup
   useEffect(() => {
-    setDeckOrder(fisherYates(TAROT_CARDS.map((c) => c.id)));
     return () => {
       stopRibbonAnim();
       if (washRafRef.current !== null) {
@@ -489,6 +523,17 @@ export function VirtualTableCanvas({
       timersRef.current = [];
     };
   }, [stopRibbonAnim]);
+
+  // Re-shuffle active pool whenever deck pool rules change (and on initial mount)
+  useEffect(() => {
+    const shuffled = fisherYates(activePoolCardIds);
+    setDeckOrder(shuffled);
+    setHoveredRibbonIdx(null);
+    // Keep wash card pool synced immediately if user switched rules during wash
+    const nextWash = shuffled.filter((id) => !usedCardIds.has(id));
+    setWashCardIds(nextWash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poolSignature]);
 
   // Measure tabletop bounds continuously with ResizeObserver
   useEffect(() => {
@@ -526,12 +571,14 @@ export function VirtualTableCanvas({
     if (prevPlacedLenRef.current > 0 && placedCards.length === 0) {
       setSelectedCardUid(null);
       movedByUserRef.current.clear();
-      setDeckOrder(fisherYates(TAROT_CARDS.map((c) => c.id)));
+      const reshuffled = fisherYates(activePoolCardIds);
+      setDeckOrder(reshuffled);
+      setWashCardIds(reshuffled);
       setSpreadProgress(0);
       setPhase("stack");
     }
     prevPlacedLenRef.current = placedCards.length;
-  }, [placedCards]);
+  }, [activePoolCardIds, placedCards]);
 
   // Compute ribbon geometry
   const ribbonGeom = useMemo(() => {
@@ -551,7 +598,7 @@ export function VirtualTableCanvas({
       const u = dir === "ltr" ? t * progress : 1 - (1 - t) * progress;
       const x = ribbonGeom.startX + u * ribbonGeom.spanX;
       const arch = 4 * u * (1 - u);
-      const stackLift = (1 - progress) * (idx * -0.34);
+      const stackLift = (1 - progress) * -Math.min(idx * 0.24, 18);
       const y = ribbonGeom.baseY - arch * ribbonGeom.arcLift + stackLift;
       const angle = (u - 0.5) * 26 * progress;
       return { x, y, angle, u };
@@ -692,33 +739,40 @@ export function VirtualTableCanvas({
   }, [deckAnim, scheduleTimer, soundEnabled, triggerHaptic]);
 
   // =========================================================================
-  // Phase B: 60fps 2D Physics Wash Shuffle
+  // Phase B: 60fps 2D Physics Wash Shuffle (True Full Active Deck Count!)
   // =========================================================================
-  const initWashBodies = useCallback(() => {
-    const cx = canvasSize.width * 0.5;
-    const cy = canvasSize.height * 0.5;
-    const spreadRx = Math.min(canvasSize.width * 0.3, 280);
-    const spreadRy = Math.min(canvasSize.height * 0.24, 190);
+  const initWashBodies = useCallback(
+    (cardIds: string[]) => {
+      const count = cardIds.length;
+      const cx = canvasSize.width * 0.5;
+      const cy = canvasSize.height * 0.5;
+      const spreadRx = Math.min(canvasSize.width * 0.36, 400);
+      const spreadRy = Math.min(canvasSize.height * 0.28, 250);
 
-    washBodiesRef.current = Array.from({ length: WASH_CARD_COUNT }, (_, i) => {
-      const theta = (i / WASH_CARD_COUNT) * Math.PI * 2 + Math.random() * 0.5;
-      const distFactor = 0.25 + Math.random() * 0.75;
-      const speed = 7 + Math.random() * 11;
-      return {
-        id: i,
-        x: cx + Math.cos(theta) * spreadRx * 0.14,
-        y: cy + Math.sin(theta) * spreadRy * 0.14,
-        vx: Math.cos(theta) * speed * distFactor + (Math.random() - 0.5) * 3,
-        vy: Math.sin(theta) * speed * distFactor + (Math.random() - 0.5) * 3,
-        angle: (Math.random() - 0.5) * 320,
-        vAngle: (Math.random() - 0.5) * 14,
-        zIndex: i + 1,
-      };
-    });
-    washZCounterRef.current = WASH_CARD_COUNT + 5;
-  }, [canvasSize.height, canvasSize.width]);
+      washCardElsRef.current = washCardElsRef.current.slice(0, count);
+      washBodiesRef.current = cardIds.map((cardId, i) => {
+        const goldenAngle = i * 2.399963229728653 + Math.random() * 0.35;
+        const radialNorm = Math.sqrt((i + 0.5) / Math.max(1, count));
+        const speed = 7 + radialNorm * 13 + Math.random() * 4;
+        return {
+          id: i,
+          cardId,
+          x: cx + Math.cos(goldenAngle) * spreadRx * (0.12 + radialNorm * 0.24),
+          y: cy + Math.sin(goldenAngle) * spreadRy * (0.12 + radialNorm * 0.24),
+          vx: Math.cos(goldenAngle) * speed + (Math.random() - 0.5) * 4,
+          vy: Math.sin(goldenAngle) * speed + (Math.random() - 0.5) * 4,
+          angle: (Math.random() - 0.5) * 340,
+          vAngle: (Math.random() - 0.5) * 16,
+          zIndex: i + 1,
+        };
+      });
+      washZCounterRef.current = count + 8;
+    },
+    [canvasSize.height, canvasSize.width]
+  );
 
   const handleEnterWash = useCallback(() => {
+    if (availableCardIds.length === 0) return;
     stopRibbonAnim();
     setSelectedCardUid(null);
     setSpreadMenuOpen(false);
@@ -726,18 +780,22 @@ export function VirtualTableCanvas({
     setIsGatheringWash(false);
     washPointersRef.current.clear();
     setWashPointerDots([]);
-    initWashBodies();
+    const snapshotIds = [...availableCardIds];
+    setWashCardIds(snapshotIds);
+    initWashBodies(snapshotIds);
     soundEngine.playShuffle(soundEnabled);
     triggerHaptic([12, 24, 12]);
     setPhase("wash");
-  }, [initWashBodies, soundEnabled, stopRibbonAnim, triggerHaptic]);
+  }, [availableCardIds, initWashBodies, soundEnabled, stopRibbonAnim, triggerHaptic]);
 
   const handleScatterWashAgain = useCallback(() => {
     if (washGatheringRef.current) return;
-    initWashBodies();
+    const shuffledIds = fisherYates(washCardIds);
+    setWashCardIds(shuffledIds);
+    initWashBodies(shuffledIds);
     soundEngine.playShuffle(soundEnabled);
     triggerHaptic(12);
-  }, [initWashBodies, soundEnabled, triggerHaptic]);
+  }, [initWashBodies, soundEnabled, triggerHaptic, washCardIds]);
 
   const handleGatherWashToRibbon = useCallback(() => {
     if (washGatheringRef.current) return;
@@ -746,8 +804,19 @@ export function VirtualTableCanvas({
     washPointersRef.current.clear();
     setWashPointerDots([]);
 
-    // Fresh true Fisher-Yates shuffle across all 78 cards
-    setDeckOrder((prev) => fisherYates(prev));
+    // Derive authentic order from physical washed z-stacking + spatial shuffle, plus gentle cut
+    const bodies = washBodiesRef.current;
+    if (bodies.length > 0) {
+      const physicalOrder = [...bodies]
+        .sort((a, b) => a.zIndex - b.zIndex || a.x - b.x)
+        .map((b) => b.cardId);
+      const placedIds = deckOrder.filter((id) => usedCardIds.has(id));
+      const washedCut = cutDeck(physicalOrder);
+      setDeckOrder([...washedCut, ...placedIds]);
+    } else {
+      setDeckOrder((prev) => fisherYates(prev));
+    }
+
     setShuffleCount((c) => c + 1);
     soundEngine.playShuffle(soundEnabled);
     triggerHaptic([12, 28, 16]);
@@ -760,7 +829,7 @@ export function VirtualTableCanvas({
       setPhase("ribbon");
       syncSpreadCardsForPhase("ribbon");
     }, 580);
-  }, [scheduleTimer, soundEnabled, syncSpreadCardsForPhase, triggerHaptic]);
+  }, [deckOrder, scheduleTimer, soundEnabled, syncSpreadCardsForPhase, triggerHaptic, usedCardIds]);
 
   // 60fps Wash Physics rAF Loop
   useEffect(() => {
@@ -772,8 +841,11 @@ export function VirtualTableCanvas({
       return;
     }
 
-    if (washBodiesRef.current.length !== WASH_CARD_COUNT) {
-      initWashBodies();
+    if (
+      washBodiesRef.current.length !== washCardIds.length ||
+      washBodiesRef.current.some((b, idx) => b.cardId !== washCardIds[idx])
+    ) {
+      initWashBodies(washCardIds);
     }
 
     let lastTime = performance.now();
@@ -782,19 +854,19 @@ export function VirtualTableCanvas({
       const dt = clamp((now - lastTime) / 1000, 0.004, 0.04);
       lastTime = now;
       const step = dt * 60;
-      const damping = Math.pow(0.9, step);
+      const damping = Math.pow(0.905, step);
       const angDamping = Math.pow(0.89, step);
 
       const bodies = washBodiesRef.current;
       const pointers = Array.from(washPointersRef.current.values());
       const halfW = washCardWidth * 0.5;
       const halfH = washCardHeight * 0.5;
-      const padLeft = halfW + 22;
-      const padRight = canvasSize.width - halfW - 22;
-      const padTop = halfH + 70;
-      const padBottom = canvasSize.height - halfH - 96;
-      const influenceR = Math.max(washCardHeight * 0.92, 118);
-      const minPairDist = washCardWidth * 0.44;
+      const padLeft = halfW + 20;
+      const padRight = canvasSize.width - halfW - 20;
+      const padTop = halfH + 68;
+      const padBottom = canvasSize.height - halfH - 92;
+      const influenceR = Math.max(washCardHeight * 0.96, 122);
+      const minPairDist = washCardWidth * (bodies.length > 50 ? 0.36 : 0.45);
       const gathering = washGatheringRef.current;
 
       let brushEnergy = 0;
@@ -956,6 +1028,7 @@ export function VirtualTableCanvas({
     soundEnabled,
     triggerHaptic,
     washCardHeight,
+    washCardIds,
     washCardWidth,
   ]);
 
@@ -2473,11 +2546,11 @@ export function VirtualTableCanvas({
                   }}
                 />
 
-                {STACK_VISUAL_LAYERS.map((layer) => {
-                  const isUpperHalf = layer >= Math.floor(STACK_VISUAL_LAYERS.length / 2);
-                  const isTopCard = layer === STACK_VISUAL_LAYERS.length - 1;
-                  const baseShiftX = -layer * 0.45;
-                  const baseShiftY = -layer * 0.95;
+                {stackVisualLayers.map((layer) => {
+                  const isUpperHalf = layer >= Math.floor(stackVisualLayers.length / 2);
+                  const isTopCard = layer === stackVisualLayers.length - 1;
+                  const baseShiftX = -layer * 0.42;
+                  const baseShiftY = -layer * 0.9;
 
                   let animX: number | number[] = baseShiftX;
                   let animY: number | number[] = baseShiftY;
@@ -2517,13 +2590,13 @@ export function VirtualTableCanvas({
                       transition={{
                         duration: deckAnim === "idle" ? 0.25 : 0.62,
                         ease: [0.22, 1, 0.36, 1],
-                        delay: deckAnim === "riffle" ? layer * 0.014 : 0,
+                        delay: deckAnim === "riffle" ? layer * 0.012 : 0,
                       }}
                       className="absolute inset-0 overflow-hidden rounded-[11px]"
                       style={{
                         zIndex:
                           deckAnim === "cut" && !isUpperHalf
-                            ? layer + 14
+                            ? layer + stackVisualLayers.length + 4
                             : layer + 1,
                         border: `1px solid ${cardEdgeColor}${isTopCard ? "e6" : "99"}`,
                         backgroundColor: "#13111c",
@@ -2532,7 +2605,7 @@ export function VirtualTableCanvas({
                           : "0 1px 2px rgba(0,0,0,0.4)",
                       }}
                     >
-                      {isTopCard || layer === STACK_VISUAL_LAYERS.length - 2 ? (
+                      {isTopCard || layer === stackVisualLayers.length - 2 ? (
                         <CardBackArtwork deckId={deckId} themeId={themeId} />
                       ) : (
                         <div
@@ -2549,8 +2622,26 @@ export function VirtualTableCanvas({
 
               {/* Subtle deck telemetry line */}
               {!cleanMode ? (
-                <div className="mt-4 flex items-center gap-2 text-[11px] tracking-wider text-[var(--text-secondary)]">
-                  <span>剩余 {availableCardIds.length} 张牌</span>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] tracking-wider text-[var(--text-secondary)]">
+                  <span>
+                    剩余 {availableCardIds.length} / {activePoolCardIds.length} 张
+                  </span>
+                  {onOpenDeckPoolModal ? (
+                    <>
+                      <span className="opacity-40">·</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playHoverTick(soundEnabled);
+                          onOpenDeckPoolModal();
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95"
+                      >
+                        <Filter className="h-2.5 w-2.5" />
+                        <span>{deckPoolShortLabel}</span>
+                      </button>
+                    </>
+                  ) : null}
                   {shuffleCount > 0 ? (
                     <>
                       <span className="opacity-40">·</span>
@@ -2627,50 +2718,52 @@ export function VirtualTableCanvas({
         >
           {/* Instructional floating ritual whisper */}
           {!cleanMode ? (
-            <div className="pointer-events-none absolute top-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] left-1/2 z-[34] -translate-x-1/2">
+            <div className="pointer-events-none absolute top-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] left-1/2 z-[120] -translate-x-1/2">
               <div className="uranai-glass flex items-center gap-2 rounded-full px-4 py-1.5 text-xs text-[var(--text-primary)]">
                 <Orbit className="h-3.5 w-3.5 animate-spin text-[var(--accent)] [animation-duration:9s]" />
                 <span className="whitespace-nowrap">
                   {isGatheringWash
-                    ? "正在聚拢牌堆并完成 78 张真随机洗牌…"
-                    : "用单手或双手在绒布上画圈搓揉洗牌"}
+                    ? `正在聚拢全部 ${washCardIds.length} 张牌并按揉洗顺序整牌…`
+                    : `正在桌上揉洗全部 ${washCardIds.length} 张牌 · 单手或双手画圈搓揉`}
                 </span>
               </div>
             </div>
           ) : null}
 
-          {/* 34 GPU-accelerated face-down cards driven directly via rAF */}
-          {Array.from({ length: WASH_CARD_COUNT }, (_, idx) => (
-            <div
-              key={`wash-card-${idx}`}
-              ref={(el) => {
-                washCardElsRef.current[idx] = el;
-              }}
-              className="pointer-events-none absolute top-0 left-0 overflow-hidden rounded-[9px] will-change-transform"
-              style={{
-                width: washCardWidth,
-                height: washCardHeight,
-                border: `1px solid ${cardEdgeColor}cc`,
-                boxShadow: "0 8px 20px rgba(0,0,0,0.46)",
-                transform: `translate3d(${(
-                  canvasSize.width * 0.5 -
-                  washCardWidth * 0.5
-                ).toFixed(1)}px, ${(
-                  canvasSize.height * 0.5 -
-                  washCardHeight * 0.5
-                ).toFixed(1)}px, 0)`,
-              }}
-            >
-              <CardBackArtwork deckId={deckId} themeId={themeId} />
-            </div>
-          ))}
+          {/* True Full-Pool GPU-accelerated face-down cards driven directly via rAF (isolated z-0 stacking context) */}
+          <div className="pointer-events-none absolute inset-0 z-0 isolate">
+            {washCardIds.map((cardId, idx) => (
+              <div
+                key={`wash-card-${cardId}`}
+                ref={(el) => {
+                  washCardElsRef.current[idx] = el;
+                }}
+                className="pointer-events-none absolute top-0 left-0 overflow-hidden rounded-[8px] will-change-transform"
+                style={{
+                  width: washCardWidth,
+                  height: washCardHeight,
+                  border: `1px solid ${cardEdgeColor}cc`,
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.44)",
+                  transform: `translate3d(${(
+                    canvasSize.width * 0.5 -
+                    washCardWidth * 0.5
+                  ).toFixed(1)}px, ${(
+                    canvasSize.height * 0.5 -
+                    washCardHeight * 0.5
+                  ).toFixed(1)}px, 0)`,
+                }}
+              >
+                <CardBackArtwork deckId={deckId} themeId={themeId} lightweight />
+              </div>
+            ))}
+          </div>
 
           {/* Warm golden fingertip contact halos for multi-touch feedback */}
           {washPointerDots.map((dot) => (
             <div
               key={dot.id}
               aria-hidden="true"
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full"
               style={{
                 left: dot.x,
                 top: dot.y,
@@ -2686,7 +2779,7 @@ export function VirtualTableCanvas({
           {!cleanMode ? (
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className="pointer-events-auto absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[36] flex -translate-x-1/2 items-center gap-2.5"
+              className="pointer-events-auto absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[125] flex -translate-x-1/2 items-center gap-2.5"
             >
               <button
                 type="button"
@@ -2815,7 +2908,7 @@ export function VirtualTableCanvas({
             {/* Ribbon Instruction Pill once spread */}
             {spreadProgress >= 0.36 && !ribbonGhost && !cleanMode ? (
               <div
-                className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+                className="pointer-events-none absolute left-1/2 z-[115] -translate-x-1/2"
                 style={{
                   top: Math.max(
                     86,
@@ -2825,18 +2918,20 @@ export function VirtualTableCanvas({
               >
                 <span className="uranai-glass inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-[11px] text-[var(--text-secondary)]">
                   <Sparkles className="h-3 w-3 text-[var(--accent)]" />
-                  {allSpreadSlotsFilled
-                    ? "牌阵已满 · 可继续抽补牌或收起牌扇专注桌面"
-                    : activeSpread
-                      ? `轻点或向上拖出卡牌 · 下一牌位：${
-                          mappedSlots.find((s) => s.isNext)?.slot.labelZh ?? "补牌"
-                        }`
-                      : "轻点或向上拖出卡牌，自由落于绒布任意位置"}
+                  {hoveredRibbonIdx !== null
+                    ? `已指向第 ${hoveredRibbonIdx + 1} / ${ribbonCards.length} 张 · 轻点或上拖出牌`
+                    : allSpreadSlotsFilled
+                      ? `牌阵已满（牌扇余 ${ribbonCards.length} 张）· 可继续补牌或专注桌面`
+                      : activeSpread
+                        ? `共展开 ${ribbonCards.length} 张牌 · 下一牌位：${
+                            mappedSlots.find((s) => s.isNext)?.slot.labelZh ?? "补牌"
+                          }`
+                        : `共展开 ${ribbonCards.length} 张牌 · 轻点或向上拖出至绒布任意位置`}
                 </span>
               </div>
             ) : null}
 
-            {/* 32 Overlapping Curved Silk Ribbon Cards */}
+            {/* Full-Pool Overlapping Curved Silk Ribbon Cards */}
             {ribbonCards.map((cardId, idx) => {
               const isBeingPulled = ribbonGhost?.cardId === cardId;
               const { x, y, angle } = getRibbonCardTransform(
@@ -2856,7 +2951,7 @@ export function VirtualTableCanvas({
                   style={{
                     width: ribbonCardWidth,
                     height: ribbonCardHeight,
-                    zIndex: isFocused ? 60 : idx + 1,
+                    zIndex: isFocused ? ribbonCards.length + 24 : idx + 1,
                     opacity: isBeingPulled ? 0 : 1,
                     transform: `translate3d(${(
                       x -
@@ -2864,9 +2959,9 @@ export function VirtualTableCanvas({
                     ).toFixed(1)}px, ${(
                       y -
                       ribbonCardHeight * 0.5 -
-                      (isFocused ? 24 : 0)
+                      (isFocused ? 26 : 0)
                     ).toFixed(1)}px, 0) rotate(${angle.toFixed(1)}deg) scale(${
-                      isFocused ? 1.09 : 1
+                      isFocused ? 1.1 : 1
                     })`,
                     transition: ribbonGestureRef.current.active
                       ? "transform 80ms ease-out, box-shadow 140ms ease"
@@ -2879,7 +2974,7 @@ export function VirtualTableCanvas({
                       : "0 8px 18px rgba(0,0,0,0.45)",
                   }}
                 >
-                  <CardBackArtwork deckId={deckId} themeId={themeId} />
+                  <CardBackArtwork deckId={deckId} themeId={themeId} lightweight />
                 </div>
               );
             })}
@@ -2888,7 +2983,7 @@ export function VirtualTableCanvas({
             {!cleanMode ? (
               <div
                 onPointerDown={(e) => e.stopPropagation()}
-                className="pointer-events-auto absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-[70] flex max-w-[94vw] -translate-x-1/2 items-center gap-1.5 sm:gap-2"
+                className="pointer-events-auto absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-[125] flex max-w-[94vw] -translate-x-1/2 items-center gap-1.5 sm:gap-2"
               >
                 {spreadProgress < 0.88 ? (
                   <button
@@ -3175,6 +3270,23 @@ export function VirtualTableCanvas({
                 ) : null}
               </AnimatePresence>
             </div>
+
+            {/* Deck Pool / Divination Rules Switch Pill */}
+            {onOpenDeckPoolModal ? (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playHoverTick(soundEnabled);
+                  setSpreadMenuOpen(false);
+                  onOpenDeckPoolModal();
+                }}
+                className="uranai-glass inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-accent)] active:scale-95 sm:px-3"
+                title="设置参与洗牌的牌池范围（全牌 78 张 / 仅大阿卡纳 / 仅小牌 / 花色 / 单张剔除）"
+              >
+                <Filter className="h-3.5 w-3.5 text-[var(--accent)]" />
+                <span className="whitespace-nowrap">{deckPoolShortLabel}</span>
+              </button>
+            ) : null}
 
             {/* Cloth Theme Switch Pill */}
             <button

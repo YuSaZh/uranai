@@ -16,11 +16,13 @@ import type {
   ClothDetailSettings,
   DeckDefinition,
   DeckId,
+  DeckPoolConfig,
   ReadingRecord,
   ThemeId,
   ThemePreset,
   UserPreferences,
 } from "@/types/tarot";
+import { sanitizeDeckPool } from "@/lib/deck-pool";
 import { getThemeById } from "@/data/themes";
 import { getDeckById } from "@/data/decks";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
@@ -65,6 +67,7 @@ export interface UranaiContextValue {
   setDeckId: (deckId: DeckId) => void;
   updatePrefs: (patch: Partial<UserPreferences>) => void;
   updateClothDetail: (patch: Partial<ClothDetailSettings>) => void;
+  updateDeckPool: (next: DeckPoolConfig) => void;
   setAiConfig: (next: AiConfig) => void;
   addReading: (record: ReadingRecord) => void;
   updateReading: (id: string, patch: Partial<ReadingRecord>) => void;
@@ -242,6 +245,19 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const updateDeckPool = useCallback((nextPool: DeckPoolConfig) => {
+    const sanitized = sanitizeDeckPool(nextPool);
+    setPrefs((prev) => {
+      const next: UserPreferences = {
+        ...prev,
+        deckPool: sanitized,
+      };
+      prefsRef.current = next;
+      saveLocalPrefs(next);
+      return next;
+    });
+  }, []);
 
   const setThemeId = useCallback(
     (themeId: ThemeId) => {
@@ -447,6 +463,7 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
       setDeckId,
       updatePrefs,
       updateClothDetail,
+      updateDeckPool,
       setAiConfig,
       addReading,
       updateReading,
@@ -473,6 +490,7 @@ export function UranaiProvider({ children }: { children: ReactNode }) {
       setDeckId,
       updatePrefs,
       updateClothDetail,
+      updateDeckPool,
       setAiConfig,
       addReading,
       updateReading,

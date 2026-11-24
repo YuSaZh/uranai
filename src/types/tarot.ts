@@ -172,6 +172,26 @@ export interface ClothDetailSettings {
   particleDensity: number;
 }
 
+export type DeckPoolPresetId =
+  | "full-78"
+  | "major-22"
+  | "minor-56"
+  | "pips-40"
+  | "major-court-38"
+  | "court-16"
+  | "custom";
+
+export type MinorSuitKey = "wands" | "cups" | "swords" | "pentacles";
+
+export interface DeckPoolConfig {
+  presetId: DeckPoolPresetId;
+  includeMajor: boolean;
+  includeMinorPips: boolean;
+  includeCourt: boolean;
+  suits: Record<MinorSuitKey, boolean>;
+  excludedCardIds: string[];
+}
+
 export interface UserPreferences {
   themeId: ThemeId;
   deckId: DeckId;
@@ -180,4 +200,5 @@ export interface UserPreferences {
   gyroEnabled: boolean;
   allowReversed: boolean;
   clothDetail: ClothDetailSettings;
+  deckPool: DeckPoolConfig;
 }

@@ -24,12 +24,16 @@ import {
   ShieldCheck,
   Sun,
   Moon,
+  Filter,
 } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
 import { THEMES } from "@/data/themes";
 import { DECKS, getCardImagePath } from "@/data/decks";
+import { TAROT_CARDS } from "@/data/tarot-cards";
 import { soundEngine } from "@/lib/sound";
+import { getDeckPoolTitle, getPoolCardIds } from "@/lib/deck-pool";
 import { ClothDetailControls } from "@/components/settings/ClothDetailControls";
+import { DeckPoolModal } from "@/components/tarot/DeckPoolModal";
 import {
   getGyroDiagnostics,
   requestGyroPermission,
@@ -136,6 +140,7 @@ export default function SettingsPage() {
     setDeckId,
     updatePrefs,
     updateClothDetail,
+    updateDeckPool,
     setAiConfig,
     signIn,
     signUp,
@@ -144,6 +149,7 @@ export default function SettingsPage() {
   } = useUranai();
 
   const [showApiKey, setShowApiKey] = useState(false);
+  const [deckPoolOpen, setDeckPoolOpen] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -635,6 +641,38 @@ export default function SettingsPage() {
             checked={prefs.allowReversed}
             onChange={(next) => updatePrefs({ allowReversed: next })}
           />
+
+          {/* Deck Pool / Divination Rules Card */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+                <Filter className="h-4 w-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                  <span>洗牌牌池与占卜规则</span>
+                  <span className="rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent-strong)]">
+                    {getDeckPoolTitle(prefs.deckPool)} ·{" "}
+                    {getPoolCardIds(prefs.deckPool, TAROT_CARDS).length} 张
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
+                  决定哪些牌参与洗牌、揉搓与摊牌（支持 78 张全副、仅 22 张大阿卡纳、仅小牌、四花色组合及单张精细剔除）。
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playHoverTick(prefs.soundEnabled);
+                setDeckPoolOpen(true);
+              }}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3.5 py-2 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              配置洗牌牌池
+            </button>
+          </div>
         </div>
       </section>
 
@@ -1041,6 +1079,14 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      <DeckPoolModal
+        open={deckPoolOpen}
+        value={prefs.deckPool}
+        soundEnabled={prefs.soundEnabled}
+        onApply={updateDeckPool}
+        onClose={() => setDeckPoolOpen(false)}
+      />
     </div>
   );
 }

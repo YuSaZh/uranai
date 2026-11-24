@@ -25,6 +25,10 @@ export interface ShuffleAndDrawRitualProps {
   slotLabels: string[];
   deckId: DeckId;
   themeId: ThemeId;
+  /** Optional subset of TarotCard IDs participating in this reading (defaults to all 78) */
+  poolCardIds?: string[];
+  poolLabel?: string;
+  onOpenPoolModal?: () => void;
   allowReversed: boolean;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
@@ -72,6 +76,9 @@ export function ShuffleAndDrawRitual({
   slotLabels,
   deckId,
   themeId,
+  poolCardIds,
+  poolLabel,
+  onOpenPoolModal,
   allowReversed,
   soundEnabled,
   hapticsEnabled,
@@ -82,10 +89,24 @@ export function ShuffleAndDrawRitual({
   const accentColor = theme.cssVars["--accent"] ?? "#d4af37";
   const cardEdgeColor = theme.cardEdgeColor ?? "#c9a24b";
 
+  // Map active pool card IDs back to canonical TAROT_CARDS indices
+  const baseIndices = useMemo(() => {
+    if (!poolCardIds || poolCardIds.length === 0) {
+      return Array.from({ length: TAROT_CARDS.length }, (_, i) => i);
+    }
+    const idSet = new Set(poolCardIds);
+    const indices: number[] = [];
+    TAROT_CARDS.forEach((card, idx) => {
+      if (idSet.has(card.id)) indices.push(idx);
+    });
+    return indices.length > 0
+      ? indices
+      : Array.from({ length: TAROT_CARDS.length }, (_, i) => i);
+  }, [poolCardIds]);
+  const poolSignature = useMemo(() => baseIndices.join(","), [baseIndices]);
+
   // SSR-safe deterministic initial order; client mount immediately Fisher-Yates shuffles
-  const [deckIndices, setDeckIndices] = useState<number[]>(() =>
-    Array.from({ length: TAROT_CARDS.length }, (_, i) => i)
-  );
+  const [deckIndices, setDeckIndices] = useState<number[]>(() => baseIndices);
   const [stage, setStage] = useState<RitualStage>("shuffle");
   const [deckMotion, setDeckMotion] = useState<DeckMotionMode>("idle");
   const [shuffleCount, setShuffleCount] = useState(0);
@@ -93,7 +114,7 @@ export function ShuffleAndDrawRitual({
   // Stage 2 draw state
   const [drawnCards, setDrawnCards] = useState<DrawnCard[]>([]);
   const [scrollPos, setScrollPos] = useState<number>(() =>
-    Math.floor(TAROT_CARDS.length / 2)
+    Math.floor(baseIndices.length / 2)
   );
   const [flyingCards, setFlyingCards] = useState<FlyingCardAnim[]>([]);
   const [isQuickDrawing, setIsQuickDrawing] = useState(false);
@@ -196,6 +217,23 @@ export function ShuffleAndDrawRitual({
     },
     [deckMotion, scheduleTimer, soundEnabled, triggerHaptic]
   );
+
+  // Re-initialize & shuffle deck if user updates deck pool rules before completing draw
+  const prevPoolSigRef = useRef(poolSignature);
+  useEffect(() => {
+    if (prevPoolSigRef.current === poolSignature) return;
+    prevPoolSigRef.current = poolSignature;
+    const fresh = fisherYatesShuffle(baseIndices);
+    deckIndicesRef.current = fresh;
+    drawnCardsRef.current = [];
+    setDeckIndices(fresh);
+    setDrawnCards([]);
+    const center = Math.floor(fresh.length / 2);
+    scrollPosRef.current = center;
+    lastFocusedIntRef.current = center;
+    setScrollPos(center);
+    setStage("shuffle");
+  }, [baseIndices, poolSignature]);
 
   // Introductory shuffle automatically on mount
   const didIntroShuffleRef = useRef(false);
@@ -581,10 +619,26 @@ export function ShuffleAndDrawRitual({
               静心默念你的问题，轻触牌堆洗牌调频
             </p>
             <p
-              className="mb-6 text-center text-xs tracking-[0.12em] opacity-75"
+              className="mb-6 flex flex-wrap items-center justify-center gap-2 text-center text-xs tracking-[0.12em] opacity-80"
               style={{ color: "var(--text-secondary, #cbbca0)" }}
             >
-              完整 78 张塔罗已就绪 · 已调频洗牌 {shuffleCount} 次
+              <span>
+                {poolLabel ? `${poolLabel} · ` : ""}共 {baseIndices.length} 张牌参与洗牌 · 已调频 {shuffleCount} 次
+              </span>
+              {onOpenPoolModal ? (
+                <button
+                  type="button"
+                  onClick={onOpenPoolModal}
+                  className="rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-normal transition hover:brightness-110"
+                  style={{
+                    borderColor: "var(--border-accent, rgba(212,175,55,0.4))",
+                    backgroundColor: "var(--accent-soft, rgba(212,175,55,0.16))",
+                    color: "var(--accent-strong, #f0d27a)",
+                  }}
+                >
+                  修改规则
+                </button>
+              ) : null}
             </p>
 
             {/* 3D Physical Stacked Tarot Deck on Cloth */}

@@ -7,8 +7,10 @@ import { getCardById } from "@/data/tarot-cards";
 import { getLocalDateKey } from "@/lib/storage";
 import { soundEngine } from "@/lib/sound";
 import { CardInspectorModal } from "@/components/tarot/CardInspectorModal";
+import { DeckPoolModal } from "@/components/tarot/DeckPoolModal";
 import { VirtualTableCanvas } from "@/components/table/VirtualTableCanvas";
 import { TableReadingDrawer } from "@/components/table/TableReadingDrawer";
+import { getSpreadById } from "@/data/spreads";
 import type { TablePlacedCard, TableSpreadId } from "@/components/table/types";
 import type {
   DrawnCard,
@@ -52,7 +54,7 @@ function toDrawnCards(cards: TablePlacedCard[]): DrawnCard[] {
 
 export default function VirtualTablePage() {
   const router = useRouter();
-  const { prefs, theme, deck, addReading, updateReading, setDeckId } =
+  const { prefs, theme, deck, addReading, updateReading, setDeckId, updateDeckPool } =
     useUranai();
 
   const [spreadId, setSpreadId] = useState<TableSpreadId>("free");
@@ -60,6 +62,7 @@ export default function VirtualTablePage() {
   const [question, setQuestion] = useState<string>("");
   const [placedCards, setPlacedCards] = useState<TablePlacedCard[]>([]);
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [deckPoolOpen, setDeckPoolOpen] = useState<boolean>(false);
   const [querentFacing, setQuerentFacing] = useState<boolean>(false);
   const [inspectTarget, setInspectTarget] = useState<{
     card: TarotCard;
@@ -370,12 +373,16 @@ export default function VirtualTablePage() {
     router.push("/");
   }, [prefs.soundEnabled, router]);
 
+  const activeSpreadMeta =
+    spreadId === "free" ? null : getSpreadById(spreadId);
+
   return (
     <div className="relative h-[100dvh] w-[100dvw] overflow-hidden">
       <VirtualTableCanvas
         deckId={deck.id}
         themeId={theme.id}
         spreadId={spreadId}
+        deckPool={prefs.deckPool}
         allowReversed={prefs.allowReversed}
         soundEnabled={prefs.soundEnabled}
         hapticsEnabled={prefs.hapticsEnabled}
@@ -387,6 +394,7 @@ export default function VirtualTablePage() {
         onOpenDrawer={handleOpenDrawer}
         onOpenClothSheet={handleOpenClothSheet}
         onOpenDeckSheet={handleOpenDeckSheet}
+        onOpenDeckPoolModal={() => setDeckPoolOpen(true)}
         onResetTable={handleResetTable}
         querentFacing={querentFacing}
         onToggleQuerentFacing={handleToggleQuerentFacing}
@@ -395,6 +403,18 @@ export default function VirtualTablePage() {
         canFullscreen={canFullscreen}
         wakeLockActive={wakeLockActive}
         onExit={handleExit}
+      />
+
+      <DeckPoolModal
+        open={deckPoolOpen}
+        value={prefs.deckPool}
+        minRequiredCards={activeSpreadMeta?.cardCount ?? 1}
+        spreadLabel={activeSpreadMeta?.nameZh ?? "自由排布"}
+        soundEnabled={prefs.soundEnabled}
+        onApply={(nextPool) => {
+          updateDeckPool(nextPool);
+        }}
+        onClose={() => setDeckPoolOpen(false)}
       />
 
       <TableReadingDrawer

@@ -19,6 +19,7 @@ import {
   Coins,
   BookOpen,
   Compass,
+  Filter,
   Tablet,
 } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
@@ -28,10 +29,12 @@ import {
   getCategoryById,
   getSpreadById,
 } from "@/data/spreads";
-import { getCardById } from "@/data/tarot-cards";
+import { TAROT_CARDS, getCardById } from "@/data/tarot-cards";
+import { getDeckPoolShortLabel, getPoolCardIds } from "@/lib/deck-pool";
 import { getLocalDateKey } from "@/lib/storage";
 import { soundEngine } from "@/lib/sound";
 import { ShuffleAndDrawRitual } from "@/components/tarot/ShuffleAndDrawRitual";
+import { DeckPoolModal } from "@/components/tarot/DeckPoolModal";
 import { TarotCard3D } from "@/components/tarot/TarotCard3D";
 import { CardInspectorModal } from "@/components/tarot/CardInspectorModal";
 import {
@@ -135,12 +138,14 @@ export default function ReadingPage() {
     addReading,
     updateReading,
     setDeckId,
+    updateDeckPool,
   } = useUranai();
 
   const [step, setStep] = useState<StepNumber>(1);
   const [categoryId, setCategoryId] = useState<ReadingCategoryId>("love");
   const [question, setQuestion] = useState<string>("");
   const [spreadId, setSpreadId] = useState<SpreadId>("time-flow");
+  const [deckPoolOpen, setDeckPoolOpen] = useState<boolean>(false);
 
   const [drawnCards, setDrawnCards] = useState<DrawnCard[]>([]);
   const [currentReadingId, setCurrentReadingId] = useState<string | null>(null);
@@ -168,6 +173,16 @@ export default function ReadingPage() {
     [categoryId]
   );
   const activeSpread = useMemo(() => getSpreadById(spreadId), [spreadId]);
+
+  const activePoolCardIds = useMemo(
+    () => getPoolCardIds(prefs.deckPool, TAROT_CARDS),
+    [prefs.deckPool]
+  );
+  const poolShortLabel = useMemo(
+    () => getDeckPoolShortLabel(prefs.deckPool, activePoolCardIds.length),
+    [activePoolCardIds.length, prefs.deckPool]
+  );
+  const poolTooSmallForSpread = activePoolCardIds.length < activeSpread.cardCount;
 
   const effectiveQuestion = useMemo(() => {
     const trimmed = question.trim();
@@ -711,6 +726,39 @@ export default function ReadingPage() {
               })}
             </div>
 
+            {/* Deck Pool / Divination Rules Banner in Step 2 */}
+            <div className="uranai-glass flex flex-wrap items-center justify-between gap-2.5 rounded-2xl px-4 py-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 font-medium text-[var(--text-primary)]">
+                  <Filter className="h-3.5 w-3.5 text-[var(--accent)]" />
+                  洗牌牌池规则
+                </span>
+                <span className="rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2.5 py-0.5 font-semibold text-[var(--accent-strong)]">
+                  {poolShortLabel}
+                </span>
+                {poolTooSmallForSpread ? (
+                  <span className="text-amber-300">
+                    当前牌池少于该牌阵所需的 {activeSpread.cardCount} 张，请扩充牌池
+                  </span>
+                ) : (
+                  <span className="text-[var(--text-muted)]">
+                    支持仅大阿卡纳、仅小牌、花色筛选或单张剔除
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playHoverTick(prefs.soundEnabled);
+                  setDeckPoolOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95"
+              >
+                <Filter className="h-3.5 w-3.5" />
+                自定义洗牌规则
+              </button>
+            </div>
+
             {/* Bottom Actions */}
             <div className="flex items-center justify-between gap-3 pt-2">
               <button
@@ -724,11 +772,12 @@ export default function ReadingPage() {
 
               <button
                 type="button"
+                disabled={poolTooSmallForSpread}
                 onClick={() => {
                   soundEngine.playShuffle(prefs.soundEnabled);
                   setStep(3);
                 }}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[var(--accent-contrast)] shadow-[0_8px_28px_var(--cloth-glow)] transition hover:brightness-110 active:scale-95"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[var(--accent-contrast)] shadow-[0_8px_28px_var(--cloth-glow)] transition hover:brightness-110 active:scale-95 disabled:opacity-45"
               >
                 <Layers className="h-4 w-4" />
                 进入洗牌与抽牌（{activeSpread.cardCount} 张）
@@ -758,6 +807,17 @@ export default function ReadingPage() {
                   {effectiveQuestion}
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playHoverTick(prefs.soundEnabled);
+                  setDeckPoolOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 px-3 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-accent)] hover:text-[var(--accent-strong)]"
+              >
+                <Filter className="h-3 w-3 text-[var(--accent)]" />
+                <span>{poolShortLabel}</span>
+              </button>
             </div>
 
             <ShuffleAndDrawRitual
@@ -766,6 +826,9 @@ export default function ReadingPage() {
               slotLabels={activeSpread.slots.map((s) => s.labelZh)}
               deckId={deck.id}
               themeId={theme.id}
+              poolCardIds={activePoolCardIds}
+              poolLabel={poolShortLabel}
+              onOpenPoolModal={() => setDeckPoolOpen(true)}
               allowReversed={prefs.allowReversed}
               soundEnabled={prefs.soundEnabled}
               hapticsEnabled={prefs.hapticsEnabled}
@@ -1213,6 +1276,17 @@ export default function ReadingPage() {
         soundEnabled={prefs.soundEnabled}
         onDeckChange={setDeckId}
         onClose={() => setInspectTarget(null)}
+      />
+
+      {/* Deck Pool / Divination Rules Modal */}
+      <DeckPoolModal
+        open={deckPoolOpen}
+        value={prefs.deckPool}
+        minRequiredCards={activeSpread.cardCount}
+        spreadLabel={activeSpread.nameZh}
+        soundEnabled={prefs.soundEnabled}
+        onApply={updateDeckPool}
+        onClose={() => setDeckPoolOpen(false)}
       />
     </div>
   );

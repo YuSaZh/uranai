@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { memo, useId, useState } from "react";
 import type { DeckId, SuitType, TarotCard, ThemeId } from "@/types/tarot";
 import { getDeckBackImagePath } from "@/data/decks";
 import { getThemeById } from "@/data/themes";
@@ -8,6 +8,23 @@ import { getThemeById } from "@/data/themes";
 export interface CardBackArtworkProps {
   deckId: DeckId;
   themeId?: ThemeId;
+  /** Uses a single shared cached bitmap/SVG-img texture for high-count 78-card wash & ribbon animations */
+  lightweight?: boolean;
+}
+
+const RWS_BACK_URI_CACHE = new Map<string, string>();
+
+function getLightweightRwsBackUri(accentColor: string): string {
+  const safeAccent = /^#[0-9a-fA-F]{3,8}$/.test(accentColor)
+    ? accentColor
+    : "#d4af37";
+  const cached = RWS_BACK_URI_CACHE.get(safeAccent);
+  if (cached) return cached;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 480"><defs><radialGradient id="b" cx="50%" cy="50%" r="72%"><stop offset="0%" stop-color="#171f3b"/><stop offset="56%" stop-color="#0b0f21"/><stop offset="100%" stop-color="#050711"/></radialGradient><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fae7ae"/><stop offset="45%" stop-color="${safeAccent}"/><stop offset="100%" stop-color="#b88d2c"/></linearGradient></defs><rect width="280" height="480" fill="url(#b)"/><rect x="12" y="12" width="256" height="456" rx="12" fill="none" stroke="url(#g)" stroke-width="2"/><rect x="22" y="22" width="236" height="436" rx="8" fill="none" stroke="url(#g)" stroke-width="1" stroke-opacity="0.78"/><circle cx="140" cy="240" r="88" fill="none" stroke="url(#g)" stroke-width="1.5"/><circle cx="140" cy="240" r="76" fill="none" stroke="url(#g)" stroke-width="0.9" stroke-dasharray="4 5"/><circle cx="140" cy="240" r="42" fill="none" stroke="url(#g)" stroke-width="1.1"/><polygon points="140,164 152,226 212,240 152,254 140,316 128,254 68,240 128,226" fill="url(#g)" fill-opacity="0.24" stroke="url(#g)" stroke-width="1.1"/><circle cx="140" cy="240" r="10" fill="url(#g)"/><path d="M140 52 L147 72 L166 79 L147 86 L140 106 L133 86 L114 79 L133 72 Z" fill="url(#g)" fill-opacity="0.82"/><path d="M140 374 L147 394 L166 401 L147 408 L140 428 L133 408 L114 401 L133 394 Z" fill="url(#g)" fill-opacity="0.82"/><circle cx="42" cy="42" r="7" fill="none" stroke="url(#g)" stroke-width="1.1"/><circle cx="238" cy="42" r="7" fill="none" stroke="url(#g)" stroke-width="1.1"/><circle cx="42" cy="438" r="7" fill="none" stroke="url(#g)" stroke-width="1.1"/><circle cx="238" cy="438" r="7" fill="none" stroke="url(#g)" stroke-width="1.1"/></svg>`;
+  const uri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  RWS_BACK_URI_CACHE.set(safeAccent, uri);
+  return uri;
 }
 
 const ASTROLABE_TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
@@ -540,7 +557,11 @@ function MuchaBackFallbackSvg() {
   );
 }
 
-export function CardBackArtwork({ deckId, themeId }: CardBackArtworkProps) {
+export const CardBackArtwork = memo(function CardBackArtwork({
+  deckId,
+  themeId,
+  lightweight = false,
+}: CardBackArtworkProps) {
   const [imgFailed, setImgFailed] = useState(false);
   const backImagePath = getDeckBackImagePath(deckId);
   const theme = getThemeById(themeId ?? "celestial-velvet");
@@ -555,6 +576,7 @@ export function CardBackArtwork({ deckId, themeId }: CardBackArtworkProps) {
             src={backImagePath}
             alt="穆夏仓鼠塔罗牌背"
             draggable={false}
+            decoding="async"
             onError={() => setImgFailed(true)}
             className="h-full w-full select-none object-cover"
           />
@@ -571,8 +593,23 @@ export function CardBackArtwork({ deckId, themeId }: CardBackArtworkProps) {
     return <MuchaBackFallbackSvg />;
   }
 
+  if (lightweight) {
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-[#0b0f21]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={getLightweightRwsBackUri(accentColor)}
+          alt="经典韦特塔罗牌背"
+          draggable={false}
+          decoding="async"
+          className="h-full w-full select-none object-cover"
+        />
+      </div>
+    );
+  }
+
   return <RiderWaiteBackSvg accentColor={accentColor} />;
-}
+});
 
 interface SuitTheme {
   tint: string;
