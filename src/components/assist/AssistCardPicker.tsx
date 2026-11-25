@@ -441,6 +441,7 @@ function CardArtworkThumb({
     >
       {activeSrc ? (
         <img
+          key={activeSrc}
           src={activeSrc}
           alt={`${card.nameZh} (${card.nameEn})`}
           loading="lazy"

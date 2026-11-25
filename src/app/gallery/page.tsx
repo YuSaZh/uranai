@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Sparkles, Layers, Eye, Check } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
 import { TAROT_CARDS } from "@/data/tarot-cards";
@@ -8,11 +8,12 @@ import {
   DECKS,
   MUCHA_AVAILABLE_SLUGS,
   getCardImagePath,
+  getCardThumbPath,
   getDeckBackImagePath,
 } from "@/data/decks";
 import { soundEngine } from "@/lib/sound";
 import { CardInspectorModal } from "@/components/tarot/CardInspectorModal";
-import type { SuitType, TarotCard } from "@/types/tarot";
+import type { DeckDefinition, SuitType, TarotCard } from "@/types/tarot";
 
 type SuitFilter = "all" | SuitType;
 
@@ -33,6 +34,158 @@ const SUIT_BADGE_MAP: Record<SuitType, { label: string; symbol: string }> = {
   pentacles: { label: "星币", symbol: "🜃" },
 };
 
+interface GalleryCardTileProps {
+  card: TarotCard;
+  deck: DeckDefinition;
+  eager: boolean;
+  onSelect: (card: TarotCard) => void;
+}
+
+const GalleryCardTile = memo(function GalleryCardTile({
+  card,
+  deck,
+  eager,
+  onSelect,
+}: GalleryCardTileProps) {
+  const thumbSrc = getCardThumbPath(deck.id, card.slug);
+  const fullSrc = getCardImagePath(deck.id, card.slug);
+  const [stage, setStage] = useState<"thumb" | "full" | "retry" | "crest">(
+    () => (thumbSrc ? "thumb" : fullSrc ? "full" : "crest")
+  );
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const activeSrc =
+    stage === "thumb"
+      ? thumbSrc
+      : stage === "full"
+        ? fullSrc
+        : stage === "retry" && fullSrc
+          ? `${fullSrc}?r=1`
+          : null;
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [activeSrc]);
+
+  const handleError = () => {
+    setLoaded(false);
+    if (stage === "thumb" && fullSrc && fullSrc !== thumbSrc) {
+      setStage("full");
+    } else if (stage === "full" && fullSrc) {
+      setStage("retry");
+    } else {
+      setStage("crest");
+    }
+  };
+
+  const isMuchaPublished =
+    deck.id === "mucha-hamster" && MUCHA_AVAILABLE_SLUGS.has(card.slug);
+  const suitInfo = SUIT_BADGE_MAP[card.suit];
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(card)}
+      className="uranai-pill-solid group relative flex flex-col overflow-hidden rounded-2xl p-2 text-left transition duration-300 hover:-translate-y-1 hover:border-[var(--border-accent)] hover:shadow-[0_14px_34px_rgba(0,0,0,0.35)] active:scale-[0.98]"
+    >
+      {/* Fluid Card Frame (uses 350w/360w WebP thumbnail to keep iOS Safari VRAM ~80% lower) */}
+      <div
+        className={`relative ${deck.aspectClass} w-full overflow-hidden rounded-xl border border-[var(--border-accent)] bg-[#14111c] shadow-inner`}
+      >
+        {activeSrc ? (
+          <>
+            {/* Subtle gilded skeleton shimmer shown until decoded */}
+            {!loaded && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-b from-[#1f1a2d] via-[#151220] to-[#0e0c16] text-center"
+              >
+                <span className="font-display text-lg text-[var(--accent)]/55 animate-pulse">
+                  {suitInfo.symbol}
+                </span>
+                <span className="font-display px-2 text-[10px] tracking-[0.18em] text-[var(--text-muted)]">
+                  {card.nameZh}
+                </span>
+              </div>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={activeSrc}
+              ref={imgRef}
+              src={activeSrc}
+              alt={`${card.nameZh} (${card.nameEn})`}
+              loading={eager ? "eager" : "lazy"}
+              decoding="async"
+              onLoad={() => setLoaded(true)}
+              onError={handleError}
+              className={`h-full w-full object-cover transition-all duration-300 group-hover:scale-[1.04] ${
+                loaded ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          </>
+        ) : (
+          /* Gilded crest fallback */
+          <div className="relative flex h-full w-full flex-col items-center justify-between bg-gradient-to-b from-[#261d14] via-[#17120e] to-[#0f0c0a] p-3 text-center">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-1.5 rounded-lg border border-[#d4af37]/35"
+            />
+            <span className="font-display text-[10px] tracking-[0.22em] text-[#e7ca7b]/85">
+              {card.romanNumeral ?? String(card.number)}
+            </span>
+            <div className="flex flex-col items-center gap-1.5 px-1">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d4af37]/45 bg-[#d4af37]/10 text-base text-[#f0d27a]">
+                {suitInfo.symbol}
+              </span>
+              <span className="font-display text-sm font-semibold tracking-wider text-[#f7ebd2]">
+                {card.nameZh}
+              </span>
+              <span className="line-clamp-1 text-[9px] tracking-[0.14em] text-[#d4af37]/75 uppercase">
+                {card.nameEn}
+              </span>
+            </div>
+            <span className="rounded-full border border-[#d4af37]/30 bg-[#d4af37]/10 px-2 py-0.5 text-[9px] text-[#e7ca7b]/85">
+              点击查看 3D 卡面
+            </span>
+          </div>
+        )}
+
+        {/* Subtle diagonal specular sheen on hover */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        />
+
+        {/* Published Mucha Artwork Badge (solid translucent fill — zero per-card backdrop-filter) */}
+        {isMuchaPublished && (
+          <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-full border border-[#f0d27a]/65 bg-black/78 px-2 py-0.5 text-[9px] font-medium text-[#f5df94]">
+            ✦ 高清原画
+          </span>
+        )}
+      </div>
+
+      {/* Card Caption */}
+      <div className="mt-2.5 flex items-baseline justify-between gap-1 px-1 pb-0.5">
+        <div className="min-w-0">
+          <div className="font-display truncate text-sm font-semibold text-[var(--text-primary)]">
+            {card.nameZh}
+          </div>
+          <div className="truncate text-[10px] tracking-wide text-[var(--text-muted)]">
+            {card.nameEn}
+          </div>
+        </div>
+        <span className="font-display shrink-0 text-[11px] font-medium text-[var(--accent)]">
+          {card.romanNumeral ?? String(card.number)}
+        </span>
+      </div>
+    </button>
+  );
+});
+
 export default function GalleryPage() {
   const { deck, theme, prefs, setDeckId } = useUranai();
 
@@ -43,6 +196,14 @@ export default function GalleryPage() {
   const [showBackModal, setShowBackModal] = useState(false);
 
   const deckBackImage = getDeckBackImagePath(deck.id);
+
+  const handleSelectCard = useCallback(
+    (picked: TarotCard) => {
+      soundEngine.playHoverTick(prefs.soundEnabled);
+      setSelectedCard(picked);
+    },
+    [prefs.soundEnabled]
+  );
 
   const filteredCards = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -233,92 +394,15 @@ export default function GalleryPage() {
         </div>
       ) : (
         <section className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-          {filteredCards.map((card) => {
-            const imagePath = getCardImagePath(deck.id, card.slug);
-            const isMuchaPublished =
-              deck.id === "mucha-hamster" && MUCHA_AVAILABLE_SLUGS.has(card.slug);
-            const suitInfo = SUIT_BADGE_MAP[card.suit];
-
-            return (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => {
-                  soundEngine.playHoverTick(prefs.soundEnabled);
-                  setSelectedCard(card);
-                }}
-                className="group relative flex flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-glass)] p-2 text-left backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:border-[var(--border-accent)] hover:shadow-[0_14px_34px_rgba(0,0,0,0.35)] active:scale-[0.98]"
-              >
-                {/* Fluid 7:12 Gilded Card Frame */}
-                <div
-                  className={`relative ${deck.aspectClass} w-full overflow-hidden rounded-xl border border-[var(--border-accent)] bg-[#0f0d16] shadow-inner`}
-                >
-                  {imagePath ? (
-                    <img
-                      src={imagePath}
-                      alt={`${card.nameZh} (${card.nameEn})`}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                    />
-                  ) : (
-                    /* Art-Nouveau gilded crest fallback for unreleased Mucha Hamster cards */
-                    <div className="relative flex h-full w-full flex-col items-center justify-between bg-gradient-to-b from-[#261d14] via-[#17120e] to-[#0f0c0a] p-3 text-center">
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-1.5 rounded-lg border border-[#d4af37]/35"
-                      />
-                      <span className="font-display text-[10px] tracking-[0.22em] text-[#e7ca7b]/85">
-                        {card.romanNumeral ?? String(card.number)}
-                      </span>
-                      <div className="flex flex-col items-center gap-1.5 px-1">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d4af37]/45 bg-[#d4af37]/10 text-base text-[#f0d27a]">
-                          {suitInfo.symbol}
-                        </span>
-                        <span className="font-display text-sm font-semibold tracking-wider text-[#f7ebd2]">
-                          {card.nameZh}
-                        </span>
-                        <span className="line-clamp-1 text-[9px] tracking-[0.14em] text-[#d4af37]/75 uppercase">
-                          {card.nameEn}
-                        </span>
-                      </div>
-                      <span className="rounded-full border border-[#d4af37]/30 bg-[#d4af37]/10 px-2 py-0.5 text-[9px] text-[#e7ca7b]/85">
-                        新艺术绘稿企划中
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Subtle diagonal specular sheen on hover */}
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                  />
-
-                  {/* Published Mucha Artwork Badge */}
-                  {isMuchaPublished && (
-                    <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-full border border-[#f0d27a]/65 bg-black/65 px-2 py-0.5 text-[9px] font-medium text-[#f5df94] backdrop-blur-sm">
-                      ✦ 高清原画
-                    </span>
-                  )}
-                </div>
-
-                {/* Card Caption */}
-                <div className="mt-2.5 flex items-baseline justify-between gap-1 px-1 pb-0.5">
-                  <div className="min-w-0">
-                    <div className="font-display truncate text-sm font-semibold text-[var(--text-primary)]">
-                      {card.nameZh}
-                    </div>
-                    <div className="truncate text-[10px] tracking-wide text-[var(--text-muted)]">
-                      {card.nameEn}
-                    </div>
-                  </div>
-                  <span className="font-display shrink-0 text-[11px] font-medium text-[var(--accent)]">
-                    {card.romanNumeral ?? String(card.number)}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
+          {filteredCards.map((card, index) => (
+            <GalleryCardTile
+              key={`${deck.id}-${card.id}`}
+              card={card}
+              deck={deck}
+              eager={index < 10}
+              onSelect={handleSelectCard}
+            />
+          ))}
         </section>
       )}
 

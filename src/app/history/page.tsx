@@ -21,7 +21,11 @@ import { useUranai } from "@/context/UranaiProvider";
 import { getCardById } from "@/data/tarot-cards";
 import { getCategoryById, getSpreadById } from "@/data/spreads";
 import { getThemeById } from "@/data/themes";
-import { getCardImagePath, getDeckAspectClass } from "@/data/decks";
+import {
+  getCardImagePath,
+  getCardThumbPath,
+  getDeckAspectClass,
+} from "@/data/decks";
 import {
   exportReadingsToJson,
   getLocalDateKey,
@@ -423,7 +427,9 @@ export default function HistoryPage() {
                       const card = getCardById(dc.cardId);
                       if (!card) return null;
                       const slot = spread.slots[dc.slotIndex];
-                      const imgUrl = getCardImagePath(record.deckId, card.slug);
+                      const imgUrl =
+                        getCardThumbPath(record.deckId, card.slug) ??
+                        getCardImagePath(record.deckId, card.slug);
 
                       return (
                         <button
@@ -444,8 +450,11 @@ export default function HistoryPage() {
                           >
                             {imgUrl ? (
                               <img
+                                key={imgUrl}
                                 src={imgUrl}
                                 alt={card.nameZh}
+                                loading="lazy"
+                                decoding="async"
                                 className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${
                                   dc.reversed ? "rotate-180" : ""
                                 }`}
