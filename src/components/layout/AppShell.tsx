@@ -13,6 +13,7 @@ import {
   Layers,
   Palette,
   Tablet,
+  ScanSearch,
   Wand2,
   Check,
   X,
@@ -48,6 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [clothTab, setClothTab] = useState<"theme" | "detail">("theme");
 
   const isTableMode = pathname === "/table";
+  const isAssistMode = pathname === "/assist" || pathname.startsWith("/assist/");
 
   useEffect(() => {
     setSheet(null);
@@ -104,38 +106,55 @@ export function AppShell({ children }: { children: ReactNode }) {
                 "linear-gradient(to bottom, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 82%, transparent) 68%, transparent 100%)",
             }}
           >
-            <div className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl px-3.5 uranai-glass sm:px-5">
+            <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-2 rounded-2xl px-2.5 uranai-glass sm:px-5">
               <Link
                 href="/"
-                className="group flex shrink-0 items-center gap-2.5 focus:outline-none"
+                className="group flex shrink-0 items-center gap-1.5 focus:outline-none sm:gap-2.5"
               >
-                <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_16px_var(--cloth-glow)] transition-transform duration-300 group-hover:scale-105">
+                <span className="relative flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_16px_var(--cloth-glow)] transition-transform duration-300 group-hover:scale-105 sm:h-8 sm:w-8">
                   <svg
                     viewBox="0 0 24 24"
-                    className="h-4 w-4 fill-current"
+                    className="h-3.5 w-3.5 fill-current sm:h-4 sm:w-4"
                     aria-hidden="true"
                   >
                     <path d="M12 1.8l2.15 7.05L21.2 11l-7.05 2.15L12 20.2l-2.15-7.05L2.8 11l7.05-2.15L12 1.8z" />
                   </svg>
                 </span>
                 <div className="flex flex-col leading-none">
-                  <span className="font-display text-sm font-semibold tracking-[0.26em] text-[var(--text-primary)] sm:text-[0.95rem]">
+                  <span className="font-display text-xs font-semibold tracking-[0.18em] text-[var(--text-primary)] sm:text-[0.95rem] sm:tracking-[0.26em]">
                     URANAI
                   </span>
-                  <span className="mt-0.5 text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
+                  <span className="mt-0.5 text-[9px] tracking-[0.12em] text-[var(--text-muted)] sm:text-[10px] sm:tracking-[0.14em]">
                     星穹塔罗
                   </span>
                 </div>
               </Link>
 
-              {/* 1-tap Virtual Tabletop, Cloth & Deck pills */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* 1-tap Physical Assist, Virtual Tabletop, Cloth & Deck pills */}
+              <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+                <Link
+                  href="/assist"
+                  onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+                  aria-label="进入实体牌辅助模式"
+                  aria-current={isAssistMode ? "page" : undefined}
+                  title="实体牌辅助模式"
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1.5 text-[11px] font-medium transition active:scale-95 sm:gap-1.5 sm:px-3 sm:text-xs ${
+                    isAssistMode
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)] shadow-[0_0_16px_var(--cloth-glow)]"
+                      : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <ScanSearch className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+                  <span className="hidden min-[410px]:inline sm:hidden">辅助</span>
+                  <span className="hidden sm:inline">实牌辅助</span>
+                </Link>
+
                 <Link
                   href="/table"
                   onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
                   aria-label="进入虚拟占卜桌面模式"
                   title="虚拟占卜桌面模式"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-1.5 text-xs font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95 sm:px-3"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border-accent)] bg-[var(--accent-soft)] px-2 py-1.5 text-[11px] font-medium text-[var(--accent-strong)] transition hover:brightness-110 active:scale-95 sm:px-3 sm:text-xs"
                 >
                   <Tablet className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
                   <span className="hidden sm:inline">桌面</span>
@@ -148,7 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     setSheet((prev) => (prev === "cloth" ? null : "cloth"));
                   }}
                   aria-label="切换占卜桌布"
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-1.5 text-[11px] font-medium transition active:scale-95 sm:gap-1.5 sm:px-3 sm:text-xs ${
                     sheet === "cloth"
                       ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                       : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
@@ -160,7 +179,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                       background: `linear-gradient(135deg, ${theme.swatches[1]}, ${theme.swatches[2]})`,
                     }}
                   />
-                  <span className="max-w-[4.5rem] truncate">{shortClothLabel}</span>
+                  <span className="max-w-[3.2rem] truncate sm:max-w-[4.5rem]">
+                    {shortClothLabel}
+                  </span>
                 </button>
 
                 <button
@@ -170,14 +191,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                     setSheet((prev) => (prev === "deck" ? null : "deck"));
                   }}
                   aria-label="切换塔罗卡组"
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition active:scale-95 sm:px-3 ${
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-1.5 text-[11px] font-medium transition active:scale-95 sm:gap-1.5 sm:px-3 sm:text-xs ${
                     sheet === "deck"
                       ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                       : "border-[var(--border-subtle)] bg-[var(--bg-surface)]/70 text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
-                  <span>{shortDeckLabel}</span>
+                  <Layers className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+                  <span className="max-w-[3.2rem] truncate sm:max-w-none">
+                    {shortDeckLabel}
+                  </span>
                 </button>
               </div>
             </div>

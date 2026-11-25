@@ -21,6 +21,7 @@ import {
   Compass,
   Filter,
   Tablet,
+  ScanSearch,
 } from "lucide-react";
 import { useUranai } from "@/context/UranaiProvider";
 import {
@@ -415,6 +416,14 @@ export default function ReadingPage() {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/assist"
+              onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)]/75 px-3.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] backdrop-blur-md transition hover:border-[var(--border-accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-strong)] active:scale-95"
+            >
+              <ScanSearch className="h-3.5 w-3.5 text-[var(--accent)]" />
+              <span>实体牌辅助</span>
+            </Link>
             <Link
               href="/table"
               onClick={() => soundEngine.playHoverTick(prefs.soundEnabled)}
